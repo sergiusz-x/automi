@@ -1,0 +1,24 @@
+{
+    "app": {
+        "port": 3000
+    },
+    "websocket": {
+        "port": 4000,
+        "useSSL": false,
+        "sslCertPath": "./certs/cert.pem",
+        "sslKeyPath": "./certs/key.pem"
+    },
+    "database": {
+        "host": "localhost",
+        "port": 3306,
+        "username": "YOUR_DATABASE_USERNAME",
+        "password": "YOUR_DATABASE_PASSWORD",
+        "name": "automi"
+    },
+    "discord": {
+        "botToken": "YOUR_DISCORD_BOT_TOKEN",
+        "clientId": "YOUR_DISCORD_CLIENT_ID",
+        "guildId": "YOUR_DISCORD_GUILD_ID",
+        "webhookUrl": "YOUR_DISCORD_WEBHOOK_URL"
+    }
+}

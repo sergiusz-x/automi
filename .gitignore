@@ -1,0 +1,7 @@
+*node_modules
+*/logs
+*/logs/*
+*package-lock.json
+*.bot_commands_cache.json
+*/config.json
+controller/bot/config/status-message.json

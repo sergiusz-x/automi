@@ -1,0 +1,5 @@
+{
+    "agentId": "agent-id-here",
+    "token": "your-secure-token-here",
+    "controllerUrl": "ws://controller-host:4000"
+}
