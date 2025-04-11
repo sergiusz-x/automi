@@ -11,13 +11,11 @@ module.exports = {
         .setName("unlink")
         .setDescription("Remove a dependency between two tasks")
         .addStringOption(opt =>
-            opt.setName("parent")
-                .setDescription("Parent task")
-                .setRequired(true)
-                .setAutocomplete(true)
+            opt.setName("parent").setDescription("Parent task").setRequired(true).setAutocomplete(true)
         )
         .addStringOption(opt =>
-            opt.setName("child")
+            opt
+                .setName("child")
                 .setDescription("Child task to remove from chain")
                 .setRequired(true)
                 .setAutocomplete(true)
@@ -132,27 +130,26 @@ module.exports = {
             }
 
             // Capture condition before destroying for logging purposes
-            const condition = dependency.condition || 'always'
-            
+            const condition = dependency.condition || "always"
+
             await dependency.destroy()
             logger.info(`✅ Removed task dependency: ${parentName} → ${childName} (${condition})`)
 
             // Customize message based on previous condition
-            let message = `✅ Dependency removed. Task \`${childName}\` no longer depends on \`${parentName}\``;
-            
+            let message = `✅ Dependency removed. Task \`${childName}\` no longer depends on \`${parentName}\``
+
             if (condition === "on:success") {
-                message += " for successful completions";
+                message += " for successful completions"
             } else if (condition === "on:error") {
-                message += " for error outcomes";
+                message += " for error outcomes"
             }
-            
-            message += ".";
+
+            message += "."
 
             return interaction.editReply({
                 content: message,
                 flags: [MessageFlags.Ephemeral]
             })
-
         } catch (err) {
             logger.error("❌ Failed to remove task dependency:", err)
             return interaction.editReply({

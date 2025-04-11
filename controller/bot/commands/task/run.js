@@ -27,7 +27,7 @@ const UPDATE_INTERVAL = 2000
 function createStatusEmbed(task, runData = {}) {
     const embed = new EmbedBuilder()
         .setTitle(`Task Execution: ${task.name}`)
-        .setColor(0x00bcd4)
+        .setColor("#00bcd4")
         .addFields([
             { name: "Agent", value: task.agentId, inline: true },
             { name: "Type", value: task.type, inline: true }
@@ -178,10 +178,7 @@ module.exports = {
                 embeds: [embed],
                 components: [
                     new ActionRowBuilder().addComponents(
-                        new ButtonBuilder()
-                            .setCustomId("cancel")
-                            .setLabel("Cancel")
-                            .setStyle(ButtonStyle.Danger)
+                        new ButtonBuilder().setCustomId("cancel").setLabel("Cancel").setStyle(ButtonStyle.Danger)
                     )
                 ]
             })
@@ -272,7 +269,6 @@ module.exports = {
                 collector.stop()
                 logger.info(`⏱️ Status updates stopped due to timeout`)
             }, 300000) // 5 minutes timeout
-
         } catch (err) {
             logger.error("❌ Failed to run task:", err)
             return interaction.editReply({

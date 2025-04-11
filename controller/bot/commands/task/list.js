@@ -2,7 +2,7 @@
  * Task List Command
  * Displays task list with filtering and sorting options
  */
-const { 
+const {
     SlashCommandSubcommandBuilder,
     EmbedBuilder,
     ActionRowBuilder,
@@ -49,9 +49,7 @@ function formatStatus(enabled, agentId) {
 function createTaskListEmbed(tasks, options) {
     const { page = 1, filter = "all" } = options
 
-    const embed = new EmbedBuilder()
-        .setTitle("📋 Task List")
-        .setColor(0x00bcd4)
+    const embed = new EmbedBuilder().setTitle("📋 Task List").setColor("#00bcd4")
 
     if (tasks.length === 0) {
         embed.setDescription("No tasks found matching the criteria.")
@@ -92,7 +90,8 @@ module.exports = {
         .setName("list")
         .setDescription("List all tasks")
         .addStringOption(option =>
-            option.setName("filter")
+            option
+                .setName("filter")
                 .setDescription("Filter tasks by status")
                 .setRequired(false)
                 .addChoices(
@@ -103,16 +102,9 @@ module.exports = {
                 )
         )
         .addStringOption(option =>
-            option.setName("agent")
-                .setDescription("Filter by agent ID")
-                .setRequired(false)
-                .setAutocomplete(true)
+            option.setName("agent").setDescription("Filter by agent ID").setRequired(false).setAutocomplete(true)
         )
-        .addStringOption(option =>
-            option.setName("search")
-                .setDescription("Search task names")
-                .setRequired(false)
-        ),
+        .addStringOption(option => option.setName("search").setDescription("Search task names").setRequired(false)),
 
     async autocomplete(interaction) {
         try {
@@ -164,21 +156,20 @@ module.exports = {
             // Create pagination buttons if needed
             const totalPages = Math.ceil(tasks.length / PAGE_SIZE)
             let components = []
-            
+
             if (totalPages > 1) {
-                const row = new ActionRowBuilder()
-                    .addComponents(
-                        new ButtonBuilder()
-                            .setCustomId("prev")
-                            .setLabel("Previous")
-                            .setStyle(ButtonStyle.Secondary)
-                            .setDisabled(true),
-                        new ButtonBuilder()
-                            .setCustomId("next")
-                            .setLabel("Next")
-                            .setStyle(ButtonStyle.Secondary)
-                            .setDisabled(tasks.length <= PAGE_SIZE)
-                    )
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId("prev")
+                        .setLabel("Previous")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(true),
+                    new ButtonBuilder()
+                        .setCustomId("next")
+                        .setLabel("Next")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(tasks.length <= PAGE_SIZE)
+                )
                 components = [row]
             }
 
@@ -208,7 +199,7 @@ module.exports = {
                     row.components[1].setDisabled(currentPage === totalPages)
 
                     // Update embed
-                    const newEmbed = createTaskListEmbed(tasks, { 
+                    const newEmbed = createTaskListEmbed(tasks, {
                         page: currentPage,
                         filter
                     })
@@ -220,12 +211,13 @@ module.exports = {
                 })
 
                 collector.on("end", () => {
-                    interaction.editReply({
-                        components: []
-                    }).catch(() => {})
+                    interaction
+                        .editReply({
+                            components: []
+                        })
+                        .catch(() => {})
                 })
             }
-
         } catch (err) {
             logger.error("❌ Failed to list tasks:", err)
             await interaction.editReply({

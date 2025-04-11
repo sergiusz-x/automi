@@ -9,23 +9,18 @@ const config = require("../utils/config")
 const logger = require("../utils/logger")
 
 // Initialize Sequelize with database configuration
-const sequelize = new Sequelize(
-    config.database.name, 
-    config.database.username, 
-    config.database.password, 
-    {
-        host: config.database.host,
-        port: config.database.port,
-        dialect: "mysql",
-        logging: msg => logger.debug("🛢️ SQL:", msg),
-        pool: {
-            max: 10,
-            min: 0,
-            acquire: 30000,
-            idle: 10000
-        }
+const sequelize = new Sequelize(config.database.name, config.database.username, config.database.password, {
+    host: config.database.host,
+    port: config.database.port,
+    dialect: "mysql",
+    logging: msg => logger.debug("🛢️ SQL:", msg),
+    pool: {
+        max: 10,
+        min: 0,
+        acquire: 30000,
+        idle: 10000
     }
-)
+})
 
 // Initialize database object
 const db = { sequelize }
@@ -52,7 +47,7 @@ logger.info("🔗 Setting up model relationships...")
 
 // Link TaskRun to Task for execution tracking
 if (db.TaskRun && db.Task) {
-    db.TaskRun.belongsTo(db.Task, { 
+    db.TaskRun.belongsTo(db.Task, {
         foreignKey: "taskId",
         onDelete: "SET NULL"
     })
@@ -62,23 +57,23 @@ if (db.TaskRun && db.Task) {
 // Set up relationships
 if (db.Task && db.TaskDependency) {
     db.Task.hasMany(db.TaskDependency, {
-        foreignKey: 'parentTaskId',
-        as: 'childDependencies'
+        foreignKey: "parentTaskId",
+        as: "childDependencies"
     })
 
     db.Task.hasMany(db.TaskDependency, {
-        foreignKey: 'childTaskId',
-        as: 'parentDependencies'
+        foreignKey: "childTaskId",
+        as: "parentDependencies"
     })
 
     db.TaskDependency.belongsTo(db.Task, {
-        foreignKey: 'parentTaskId',
-        as: 'parentTask'
+        foreignKey: "parentTaskId",
+        as: "parentTask"
     })
 
     db.TaskDependency.belongsTo(db.Task, {
-        foreignKey: 'childTaskId',
-        as: 'childTask'
+        foreignKey: "childTaskId",
+        as: "childTask"
     })
     logger.debug("✅ Task and TaskDependency relationships established")
 }

@@ -2,48 +2,10 @@
  * Agent Info Command
  * Shows detailed agent information and statistics
  */
-const { 
-    SlashCommandSubcommandBuilder, 
-    EmbedBuilder,
-    MessageFlags 
-} = require("discord.js")
-const { DateTime } = require("luxon")
+const { SlashCommandSubcommandBuilder, EmbedBuilder, MessageFlags } = require("discord.js")
 const logger = require("../../../utils/logger")
 const db = require("../../../db")
 const agents = require("../../../core/agents")
-
-/**
- * Format bytes to human readable size
- * @param {number} bytes Number of bytes
- * @returns {string} Formatted size
- */
-function formatBytes(bytes) {
-    if (!bytes) return "0 B"
-    const sizes = ["B", "KB", "MB", "GB", "TB"]
-    const i = Math.floor(Math.log(bytes) / Math.log(1024))
-    return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${sizes[i]}`
-}
-
-/**
- * Format duration in milliseconds
- * @param {number} ms Duration in milliseconds
- * @returns {string} Formatted duration
- */
-function formatDuration(ms) {
-    if (!ms) return "0s"
-    const seconds = Math.floor(ms / 1000)
-    const minutes = Math.floor(seconds / 60)
-    const hours = Math.floor(minutes / 60)
-    const days = Math.floor(hours / 24)
-
-    const parts = []
-    if (days > 0) parts.push(`${days}d`)
-    if (hours % 24 > 0) parts.push(`${hours % 24}h`)
-    if (minutes % 60 > 0) parts.push(`${minutes % 60}m`)
-    if (seconds % 60 > 0) parts.push(`${seconds % 60}s`)
-
-    return parts.join(" ")
-}
 
 /**
  * Calculate task statistics for an agent
@@ -104,12 +66,7 @@ module.exports = {
     data: new SlashCommandSubcommandBuilder()
         .setName("info")
         .setDescription("Show detailed agent information")
-        .addStringOption(opt =>
-            opt.setName("id")
-                .setDescription("Agent ID")
-                .setRequired(true)
-                .setAutocomplete(true)
-        ),
+        .addStringOption(opt => opt.setName("id").setDescription("Agent ID").setRequired(true).setAutocomplete(true)),
 
     async autocomplete(interaction) {
         try {
@@ -156,9 +113,7 @@ module.exports = {
             const stats = await calculateTaskStats(agentId)
 
             // Create embed
-            const embed = new EmbedBuilder()
-                .setTitle(`🤖 Agent: ${agentId}`)
-                .setColor(isOnline ? 0x00ff00 : 0xff0000)
+            const embed = new EmbedBuilder().setTitle(`🤖 Agent: ${agentId}`).setColor(isOnline ? "#00ff00" : "#ff0000")
 
             // Status section
             const statusEmoji = isOnline ? "🟢" : "🔴"
@@ -167,7 +122,9 @@ module.exports = {
                     name: "Status",
                     value: [
                         `${statusEmoji} ${isOnline ? "Online" : "Offline"}`,
-                        `Last Seen: ${agent.lastSeen ? `<t:${Math.floor(agent.lastSeen.getTime() / 1000)}:R>` : "Never"}`
+                        `Last Seen: ${
+                            agent.lastSeen ? `<t:${Math.floor(agent.lastSeen.getTime() / 1000)}:R>` : "Never"
+                        }`
                     ].join("\n"),
                     inline: true
                 }
@@ -185,9 +142,7 @@ module.exports = {
             }
 
             // Task statistics
-            const successRate = stats.runs.total > 0
-                ? ((stats.runs.success / stats.runs.total) * 100).toFixed(1)
-                : 0
+            const successRate = stats.runs.total > 0 ? ((stats.runs.success / stats.runs.total) * 100).toFixed(1) : 0
 
             embed.addFields([
                 {
@@ -211,7 +166,6 @@ module.exports = {
             ])
 
             return interaction.editReply({ embeds: [embed] })
-
         } catch (err) {
             logger.error("❌ Failed to get agent info:", err)
             return interaction.editReply({

@@ -2,19 +2,17 @@
  * Task Add Command
  * Creates new automation tasks with validation
  */
-const { 
-    SlashCommandSubcommandBuilder, 
+const {
+    SlashCommandSubcommandBuilder,
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
     ActionRowBuilder,
-    MessageFlags,
-    AttachmentBuilder
+    MessageFlags
 } = require("discord.js")
 const logger = require("../../../utils/logger")
 const db = require("../../../db")
 const cron = require("node-cron")
-const fs = require('fs').promises
 
 /**
  * Validate task name format
@@ -49,12 +47,11 @@ module.exports = {
         .setName("add")
         .setDescription("Create a new task")
         .addStringOption(opt =>
-            opt.setName("name")
-                .setDescription("Task name (letters, numbers, hyphens, underscores)")
-                .setRequired(true)
+            opt.setName("name").setDescription("Task name (letters, numbers, hyphens, underscores)").setRequired(true)
         )
         .addStringOption(opt =>
-            opt.setName("type")
+            opt
+                .setName("type")
                 .setDescription("Script type")
                 .setRequired(true)
                 .addChoices(
@@ -64,26 +61,13 @@ module.exports = {
                 )
         )
         .addStringOption(opt =>
-            opt.setName("agent")
-                .setDescription("Agent to run the task")
-                .setRequired(true)
-                .setAutocomplete(true)
+            opt.setName("agent").setDescription("Agent to run the task").setRequired(true).setAutocomplete(true)
         )
         .addAttachmentOption(opt =>
-            opt.setName("script_file")
-                .setDescription("Script file to upload (optional)")
-                .setRequired(false)
+            opt.setName("script_file").setDescription("Script file to upload (optional)").setRequired(false)
         )
-        .addStringOption(opt =>
-            opt.setName("schedule")
-                .setDescription("Cron schedule (optional)")
-                .setRequired(false)
-        )
-        .addStringOption(opt =>
-            opt.setName("params")
-                .setDescription("JSON parameters (optional)")
-                .setRequired(false)
-        ),
+        .addStringOption(opt => opt.setName("schedule").setDescription("Cron schedule (optional)").setRequired(false))
+        .addStringOption(opt => opt.setName("params").setDescription("JSON parameters (optional)").setRequired(false)),
 
     async autocomplete(interaction) {
         try {
@@ -183,24 +167,26 @@ module.exports = {
                 try {
                     // Validate file extension based on type
                     const fileExtensions = {
-                        bash: ['.sh', '.bash'],
-                        python: ['.py'],
-                        node: ['.js']
+                        bash: [".sh", ".bash"],
+                        python: [".py"],
+                        node: [".js"]
                     }
-                    
+
                     const fileName = scriptFile.name.toLowerCase()
                     const validExtensions = fileExtensions[type]
-                    
+
                     if (!validExtensions.some(ext => fileName.endsWith(ext))) {
                         return interaction.editReply({
-                            content: `❌ Invalid file extension for ${type} script. Expected: ${validExtensions.join(', ')}`,
+                            content: `❌ Invalid file extension for ${type} script. Expected: ${validExtensions.join(
+                                ", "
+                            )}`
                         })
                     }
 
                     // Download and read file content
                     const response = await fetch(scriptFile.url)
                     if (!response.ok) {
-                        throw new Error('Failed to download file')
+                        throw new Error("Failed to download file")
                     }
                     const scriptContent = await response.text()
 
@@ -218,7 +204,6 @@ module.exports = {
                     return interaction.editReply({
                         content: `✅ Task \`${name}\` created successfully!`
                     })
-
                 } catch (err) {
                     logger.error("❌ Failed to process script file:", err)
                     return interaction.editReply({
@@ -229,17 +214,15 @@ module.exports = {
 
             // If no file provided, open script editor modal
             const modalId = [
-                'create-task',
+                "create-task",
                 name,
                 type,
                 agentId,
-                schedule || '_',
-                Object.keys(params).length ? Buffer.from(JSON.stringify(params)).toString('base64') : '_'
-            ].join('|')
-            
-            const modal = new ModalBuilder()
-                .setCustomId(modalId)
-                .setTitle(`Create Task: ${name}`)
+                schedule || "_",
+                Object.keys(params).length ? Buffer.from(JSON.stringify(params)).toString("base64") : "_"
+            ].join("|")
+
+            const modal = new ModalBuilder().setCustomId(modalId).setTitle(`Create Task: ${name}`)
 
             const scriptInput = new TextInputBuilder()
                 .setCustomId("script")
@@ -252,7 +235,6 @@ module.exports = {
             modal.addComponents(row)
 
             await interaction.showModal(modal)
-
         } catch (err) {
             logger.error("❌ Failed to create task:", err)
             return interaction.reply({

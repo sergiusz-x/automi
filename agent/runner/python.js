@@ -15,12 +15,12 @@ function generateEnvironment(params) {
     try {
         Object.entries(params).forEach(([key, value]) => {
             // Convert all values to strings since env vars must be strings
-            env[`PARAM_${key.toUpperCase()}`] = typeof value === 'object' 
-                ? JSON.stringify(value)
-                : String(value)
+            env[`PARAM_${key.toUpperCase()}`] = typeof value === "object" ? JSON.stringify(value) : String(value)
         })
-        logger.debug("🔄 Generated environment variables:", 
-            Object.keys(params).map(k => `PARAM_${k.toUpperCase()}`))
+        logger.debug(
+            "🔄 Generated environment variables:",
+            Object.keys(params).map(k => `PARAM_${k.toUpperCase()}`)
+        )
     } catch (err) {
         logger.error("❌ Failed to convert parameters to env vars:", err)
     }
@@ -34,12 +34,12 @@ function generateEnvironment(params) {
  * @returns {Promise<Object>} Process handle and result promise
  */
 function createProcess(script, params = {}) {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
         try {
             // Set up Python process with environment variables
             const env = generateEnvironment(params)
             logger.info("🐍 Starting Python script execution")
-            
+
             const proc = spawn("python", ["-c", script], {
                 timeout: 300000, // 5-minute timeout
                 env
@@ -69,7 +69,7 @@ function createProcess(script, params = {}) {
             proc.on("close", code => {
                 const success = code === 0 && !hasError && !killed
                 logger.info(`${success ? "✅" : "❌"} Python script finished with code ${code}, success: ${success}`)
-                
+
                 if (code !== 0) {
                     logger.error(`❌ Process exited with non-zero code ${code}`)
                 }
@@ -114,7 +114,6 @@ function createProcess(script, params = {}) {
             }
 
             return proc
-
         } catch (err) {
             logger.error("❌ Critical error in script execution:", err)
             resolve({

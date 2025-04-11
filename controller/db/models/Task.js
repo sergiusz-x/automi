@@ -68,11 +68,11 @@ module.exports = sequelize => {
                 allowNull: true,
                 defaultValue: {},
                 get() {
-                    const rawValue = this.getDataValue('params');
-                    return rawValue ? (typeof rawValue === 'string' ? JSON.parse(rawValue) : rawValue) : {};
+                    const rawValue = this.getDataValue("params")
+                    return rawValue ? (typeof rawValue === "string" ? JSON.parse(rawValue) : rawValue) : {}
                 },
                 set(value) {
-                    this.setDataValue('params', value ? (typeof value === 'string' ? JSON.parse(value) : value) : {});
+                    this.setDataValue("params", value ? (typeof value === "string" ? JSON.parse(value) : value) : {})
                 },
                 validate: {
                     isObject(value) {
@@ -114,19 +114,19 @@ module.exports = sequelize => {
         {
             tableName: "tasks",
             hooks: {
-                beforeValidate: (task) => {
+                beforeValidate: task => {
                     logger.debug(`🔍 Validating task: ${task.name}`)
                 },
-                beforeCreate: (task) => {
+                beforeCreate: task => {
                     logger.info(`📝 Creating new task: ${task.name}`)
                 },
-                afterCreate: (task) => {
+                afterCreate: task => {
                     logger.info(`✅ Task created: ${task.name}`)
                     if (task.schedule) {
                         logger.info(`⏰ Task scheduled: ${task.schedule}`)
                     }
                 },
-                beforeUpdate: (task) => {
+                beforeUpdate: task => {
                     if (task.changed("script")) {
                         logger.info(`📝 Updating script for task: ${task.name}`)
                     }
@@ -139,13 +139,13 @@ module.exports = sequelize => {
                         logger.info(`🔄 Task ${task.name} ${status}`)
                     }
                 },
-                afterUpdate: (task) => {
+                afterUpdate: task => {
                     logger.info(`✅ Task updated: ${task.name}`)
                 },
-                beforeDestroy: (task) => {
+                beforeDestroy: task => {
                     logger.warn(`🗑️ Removing task: ${task.name}`)
                 },
-                afterDestroy: (task) => {
+                afterDestroy: task => {
                     logger.info(`✅ Task removed: ${task.name}`)
                 }
             },

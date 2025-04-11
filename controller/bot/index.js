@@ -2,15 +2,7 @@
  * Discord Bot Module
  * Manages command registration, interaction handling, and bot lifecycle
  */
-const { 
-    Client, 
-    GatewayIntentBits, 
-    Collection, 
-    Events, 
-    REST, 
-    Routes, 
-    MessageFlags 
-} = require("discord.js")
+const { Client, GatewayIntentBits, Collection, Events, REST, Routes, MessageFlags } = require("discord.js")
 const config = require("../utils/config")
 const logger = require("../utils/logger")
 const fs = require("fs")
@@ -19,13 +11,7 @@ const handleModalSubmit = require("./listeners/modalSubmit")
 
 // Initialize Discord client with required intents
 const client = new Client({
-    intents: [GatewayIntentBits.Guilds],
-    presence: {
-        activities: [{
-            name: "automation tasks",
-            type: "WATCHING"
-        }]
-    }
+    intents: [GatewayIntentBits.Guilds]
 })
 
 // Command collection for fast lookup
@@ -37,59 +23,60 @@ const commands = []
  * @returns {Promise<void>}
  */
 async function loadCommands() {
-    const commandsDir = path.join(__dirname, "commands");
-    
-    // Sprawdź czy katalog istnieje
-    if (!fs.existsSync(commandsDir)) {
-        logger.error(`❌ Commands directory not found at ${commandsDir}`);
-        return;
-    }
-    
-    const commandFiles = fs.readdirSync(commandsDir)
-        .filter(file => file.endsWith(".js") && !fs.statSync(path.join(commandsDir, file)).isDirectory());
+    const commandsDir = path.join(__dirname, "commands")
 
-    logger.info(`🔍 Found ${commandFiles.length} command files`);
+    // Check if directory exists
+    if (!fs.existsSync(commandsDir)) {
+        logger.error(`❌ Commands directory not found at ${commandsDir}`)
+        return
+    }
+
+    const commandFiles = fs
+        .readdirSync(commandsDir)
+        .filter(file => file.endsWith(".js") && !fs.statSync(path.join(commandsDir, file)).isDirectory())
+
+    logger.info(`🔍 Found ${commandFiles.length} command files`)
 
     for (const file of commandFiles) {
         try {
-            const filePath = path.join(commandsDir, file);
-            // Sprawdź czy plik jest pusty
-            const stats = fs.statSync(filePath);
+            const filePath = path.join(commandsDir, file)
+            // Check if file is empty
+            const stats = fs.statSync(filePath)
             if (stats.size === 0) {
-                logger.warn(`⚠️ Skipping empty command file: ${file}`);
-                continue;
+                logger.warn(`⚠️ Skipping empty command file: ${file}`)
+                continue
             }
 
-            // Próba załadowania komendy
-            const command = require(filePath);
-            
-            // Weryfikacja struktury komendy
+            // Try to load the command
+            const command = require(filePath)
+
+            // Validation of command structure
             if (!command) {
-                logger.warn(`⚠️ Command file does not export anything: ${file}`);
-                continue;
-            }
-            
-            if (!command.data) {
-                logger.warn(`⚠️ Command does not have data property: ${file}`);
-                continue;
-            }
-            
-            if (!command.data.toJSON) {
-                logger.warn(`⚠️ Command data is not a SlashCommandBuilder: ${file}`);
-                continue;
-            }
-            
-            if (!command.execute || typeof command.execute !== 'function') {
-                logger.warn(`⚠️ Command is missing execute function: ${file}`);
-                continue;
+                logger.warn(`⚠️ Command file does not export anything: ${file}`)
+                continue
             }
 
-            // Zarejestruj komendę
-            client.commands.set(command.data.name, command);
-            commands.push(command.data.toJSON());
-            logger.info(`🧩 Loaded command: /${command.data.name}`);
+            if (!command.data) {
+                logger.warn(`⚠️ Command does not have data property: ${file}`)
+                continue
+            }
+
+            if (!command.data.toJSON) {
+                logger.warn(`⚠️ Command data is not a SlashCommandBuilder: ${file}`)
+                continue
+            }
+
+            if (!command.execute || typeof command.execute !== "function") {
+                logger.warn(`⚠️ Command is missing execute function: ${file}`)
+                continue
+            }
+
+            // Register the command
+            client.commands.set(command.data.name, command)
+            commands.push(command.data.toJSON())
+            logger.info(`🧩 Loaded command: /${command.data.name}`)
         } catch (err) {
-            logger.error(`❌ Failed to load command from ${file}:`, err);
+            logger.error(`❌ Failed to load command from ${file}:`, err)
         }
     }
 }
@@ -117,15 +104,11 @@ async function deployCommandsIfNeeded() {
         }
 
         const rest = new REST({ version: "10" }).setToken(config.discord.botToken)
-        
+
         logger.info("📡 Deploying slash commands to Discord...")
-        await rest.put(
-            Routes.applicationGuildCommands(
-                config.discord.clientId, 
-                config.discord.guildId
-            ),
-            { body: commands }
-        )
+        await rest.put(Routes.applicationGuildCommands(config.discord.clientId, config.discord.guildId), {
+            body: commands
+        })
 
         fs.writeFileSync(cachePath, newCache)
         logger.info("✅ Commands deployed successfully")
@@ -157,7 +140,7 @@ async function handleInteraction(interaction) {
 
         if (interaction.isChatInputCommand()) {
             const subcommand = interaction.options.getSubcommand(false)
-            logger.info(`🎯 Executing command: /${interaction.commandName}${subcommand ? ` ${subcommand}` : ''}`)
+            logger.info(`🎯 Executing command: /${interaction.commandName}${subcommand ? ` ${subcommand}` : ""}`)
             await command.execute(interaction)
         } else if (interaction.isAutocomplete() && command.autocomplete) {
             await command.autocomplete(interaction)

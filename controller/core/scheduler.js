@@ -58,7 +58,7 @@ async function startScheduler() {
         }
 
         logger.info(`✅ Scheduler initialized with ${tasks.length} tasks`)
-        
+
         // Set up task modification hooks
         setupTaskHooks()
     } catch (err) {
@@ -71,7 +71,7 @@ async function startScheduler() {
  * Set up database hooks to manage cron jobs when tasks are modified
  */
 function setupTaskHooks() {
-    db.Task.afterUpdate(async (task) => {
+    db.Task.afterUpdate(async task => {
         const existingJob = activeJobs.get(task.id)
 
         // Stop existing job if task is disabled or schedule removed
@@ -107,7 +107,7 @@ function setupTaskHooks() {
         }
     })
 
-    db.Task.afterDestroy((task) => {
+    db.Task.afterDestroy(task => {
         const job = activeJobs.get(task.id)
         if (job) {
             job.stop()

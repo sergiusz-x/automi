@@ -1,7 +1,7 @@
-const { 
-    SlashCommandSubcommandBuilder, 
-    ModalBuilder, 
-    TextInputBuilder, 
+const {
+    SlashCommandSubcommandBuilder,
+    ModalBuilder,
+    TextInputBuilder,
     TextInputStyle,
     ActionRowBuilder,
     EmbedBuilder,
@@ -11,7 +11,7 @@ const logger = require("../../../utils/logger")
 const db = require("../../../db")
 const cron = require("node-cron")
 
-const SCRIPT_PREVIEW_LENGTH = 1500
+const SCRIPT_PREVIEW_LENGTH = 3000
 
 /**
  * Validate cron schedule expression
@@ -34,10 +34,11 @@ function validateSchedule(schedule) {
  */
 function generateScriptPreview(script, type) {
     if (!script) return "No script content"
-    
-    const preview = script.length > SCRIPT_PREVIEW_LENGTH
-        ? script.substring(0, SCRIPT_PREVIEW_LENGTH) + "\n... (truncated)"
-        : script
+
+    const preview =
+        script.length > SCRIPT_PREVIEW_LENGTH
+            ? script.substring(0, SCRIPT_PREVIEW_LENGTH) + "\n... (truncated)"
+            : script
 
     return `\`\`\`${type}\n${preview}\n\`\`\``
 }
@@ -51,7 +52,7 @@ function createTaskPreview(task) {
     const embed = new EmbedBuilder()
         .setTitle(`Task Preview: ${task.name}`)
         .setDescription(generateScriptPreview(task.script, task.type))
-        .setColor(task.enabled ? 0x00ff00 : 0xff0000)
+        .setColor(task.enabled ? "#00ff00" : "#ff0000")
         .addFields([
             { name: "Type", value: task.type, inline: true },
             { name: "Agent", value: task.agentId, inline: true },
@@ -59,16 +60,14 @@ function createTaskPreview(task) {
         ])
 
     if (task.schedule) {
-        embed.addFields([
-            { name: "Schedule", value: `\`${task.schedule}\``, inline: true }
-        ])
+        embed.addFields([{ name: "Schedule", value: `\`${task.schedule}\``, inline: true }])
     }
 
     if (task.params && Object.keys(task.params).length > 0) {
         embed.addFields([
             {
                 name: "Parameters",
-                value: `\`\`\`json\n${JSON.stringify(task.params, null, 2)}\n\`\`\``
+                value: `\`\`\`json\n${JSON.stringify(task.params, null, 4)}\n\`\`\``
             }
         ])
     }
@@ -80,36 +79,26 @@ module.exports = {
     data: new SlashCommandSubcommandBuilder()
         .setName("edit")
         .setDescription("Edit task configuration")
-        .addStringOption(option => 
-            option.setName("name")
-                .setDescription("Name of the task to edit")
-                .setRequired(true)
-                .setAutocomplete(true)
+        .addStringOption(option =>
+            option.setName("name").setDescription("Name of the task to edit").setRequired(true).setAutocomplete(true)
         )
         .addStringOption(option =>
-            option.setName("schedule")
-                .setDescription("Cron schedule expression (optional)")
-                .setRequired(false)
+            option.setName("schedule").setDescription("Cron schedule expression (optional)").setRequired(false)
         )
         .addBooleanOption(option =>
-            option.setName("enabled")
-                .setDescription("Enable or disable the task")
-                .setRequired(false)
+            option.setName("enabled").setDescription("Enable or disable the task").setRequired(false)
         )
         .addBooleanOption(option =>
-            option.setName("preview")
+            option
+                .setName("preview")
                 .setDescription("Show current task configuration without editing")
                 .setRequired(false)
         )
         .addBooleanOption(option =>
-            option.setName("edit-script")
-                .setDescription("Open script editor")
-                .setRequired(false)
+            option.setName("edit-script").setDescription("Open script editor").setRequired(false)
         )
         .addAttachmentOption(option =>
-            option.setName("script-file")
-                .setDescription("Upload a file containing the new script")
-                .setRequired(false)
+            option.setName("script-file").setDescription("Upload a file containing the new script").setRequired(false)
         ),
 
     async autocomplete(interaction) {
@@ -158,9 +147,7 @@ module.exports = {
 
             // Handle script edit via modal before deferring reply
             if (editScript) {
-                const modal = new ModalBuilder()
-                    .setCustomId(`edit-task-${taskName}`)
-                    .setTitle(`Edit Task: ${taskName}`)
+                const modal = new ModalBuilder().setCustomId(`edit-task-${taskName}`).setTitle(`Edit Task: ${taskName}`)
 
                 const scriptInput = new TextInputBuilder()
                     .setCustomId("script")
@@ -189,7 +176,8 @@ module.exports = {
 
             // Handle script file upload
             if (scriptFile) {
-                if (scriptFile.size > 1024 * 1024) { // 1MB limit
+                if (scriptFile.size > 1024 * 1024) {
+                    // 1MB limit
                     return interaction.editReply({
                         content: "❌ Script file too large. Maximum size is 1MB.",
                         flags: [MessageFlags.Ephemeral]
@@ -200,7 +188,7 @@ module.exports = {
                     const response = await fetch(scriptFile.url)
                     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
                     const newScript = await response.text()
-                    
+
                     await task.update({ script: newScript })
                     logger.info(`✅ Task "${taskName}" script updated from file: ${scriptFile.name}`)
 
@@ -243,7 +231,6 @@ module.exports = {
                 embeds: [createTaskPreview(await task.reload())],
                 flags: [MessageFlags.Ephemeral]
             })
-
         } catch (err) {
             logger.error(`❌ Failed to edit task ${taskName}:`, err)
             if (!interaction.deferred && !interaction.replied) {

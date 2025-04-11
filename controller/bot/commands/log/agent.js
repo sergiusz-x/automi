@@ -2,16 +2,15 @@
  * Agent Log Command
  * View execution logs for all tasks on an agent
  */
-const { 
-    SlashCommandSubcommandBuilder, 
+const {
+    SlashCommandSubcommandBuilder,
     EmbedBuilder,
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
     StringSelectMenuBuilder,
-    MessageFlags 
+    MessageFlags
 } = require("discord.js")
-const { DateTime } = require("luxon")
 const logger = require("../../../utils/logger")
 const db = require("../../../db")
 
@@ -63,9 +62,7 @@ function createLogEmbed(runs, agent, options) {
     const end = Math.min(start + PAGE_SIZE, runs.length)
     const pageRuns = runs.slice(start, end)
 
-    const embed = new EmbedBuilder()
-        .setTitle(`📜 Agent Logs: ${agent.agentId}`)
-        .setColor(0x00bcd4)
+    const embed = new EmbedBuilder().setTitle(`📜 Agent Logs: ${agent.agentId}`).setColor("#00bcd4")
 
     if (runs.length === 0) {
         embed.setDescription("No execution logs found matching the criteria.")
@@ -75,11 +72,12 @@ function createLogEmbed(runs, agent, options) {
     // Add run entries
     let description = ""
     for (const run of pageRuns) {
-        const status = {
-            success: "✅",
-            error: "❌",
-            pending: "⏳"
-        }[run.status] || "❓"
+        const status =
+            {
+                success: "✅",
+                error: "❌",
+                pending: "⏳"
+            }[run.status] || "❓"
 
         // Convert to Unix timestamp (seconds)
         const timestamp = Math.floor(run.createdAt.getTime() / 1000)
@@ -133,14 +131,10 @@ module.exports = {
     data: new SlashCommandSubcommandBuilder()
         .setName("agent")
         .setDescription("View agent execution logs")
+        .addStringOption(opt => opt.setName("id").setDescription("Agent ID").setRequired(true).setAutocomplete(true))
         .addStringOption(opt =>
-            opt.setName("id")
-                .setDescription("Agent ID")
-                .setRequired(true)
-                .setAutocomplete(true)
-        )
-        .addStringOption(opt =>
-            opt.setName("status")
+            opt
+                .setName("status")
                 .setDescription("Filter by status")
                 .setRequired(false)
                 .addChoices(
@@ -150,7 +144,8 @@ module.exports = {
                 )
         )
         .addStringOption(opt =>
-            opt.setName("time")
+            opt
+                .setName("time")
                 .setDescription("Time range")
                 .setRequired(false)
                 .addChoices(
@@ -232,10 +227,12 @@ module.exports = {
             // Fetch runs with task info
             const runs = await db.TaskRun.findAll({
                 where,
-                include: [{
-                    model: db.Task,
-                    attributes: ["name"]
-                }],
+                include: [
+                    {
+                        model: db.Task,
+                        attributes: ["name"]
+                    }
+                ],
                 order: [["createdAt", "DESC"]],
                 limit: 100
             })
@@ -245,88 +242,85 @@ module.exports = {
             let components = []
 
             if (totalPages > 1) {
-                const row = new ActionRowBuilder()
-                    .addComponents(
-                        new ButtonBuilder()
-                            .setCustomId("prev")
-                            .setLabel("Previous")
-                            .setStyle(ButtonStyle.Secondary)
-                            .setDisabled(true),
-                        new ButtonBuilder()
-                            .setCustomId("next")
-                            .setLabel("Next")
-                            .setStyle(ButtonStyle.Secondary)
-                            .setDisabled(runs.length <= PAGE_SIZE)
-                    )
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId("prev")
+                        .setLabel("Previous")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(true),
+                    new ButtonBuilder()
+                        .setCustomId("next")
+                        .setLabel("Next")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(runs.length <= PAGE_SIZE)
+                )
                 components.push(row)
             }
 
             // Add filter menus
-            const filterRow = new ActionRowBuilder()
-                .addComponents(
-                    new StringSelectMenuBuilder()
-                        .setCustomId("filter")
-                        .setPlaceholder("Filter by status...")
-                        .addOptions([
-                            {
-                                label: "All Runs",
-                                value: "all",
-                                default: status === "all"
-                            },
-                            {
-                                label: "Success Only",
-                                value: "success",
-                                default: status === "success"
-                            },
-                            {
-                                label: "Errors Only",
-                                value: "error",
-                                default: status === "error"
-                            }
-                        ])
-                )
+            const filterRow = new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId("filter")
+                    .setPlaceholder("Filter by status...")
+                    .addOptions([
+                        {
+                            label: "All Runs",
+                            value: "all",
+                            default: status === "all"
+                        },
+                        {
+                            label: "Success Only",
+                            value: "success",
+                            default: status === "success"
+                        },
+                        {
+                            label: "Errors Only",
+                            value: "error",
+                            default: status === "error"
+                        }
+                    ])
+            )
 
-            const timeRow = new ActionRowBuilder()
-                .addComponents(
-                    new StringSelectMenuBuilder()
-                        .setCustomId("time")
-                        .setPlaceholder("Time range...")
-                        .addOptions([
-                            {
-                                label: "All Time",
-                                value: "all",
-                                default: timeRange === "all"
-                            },
-                            {
-                                label: "Last Hour",
-                                value: "1h",
-                                default: timeRange === "1h"
-                            },
-                            {
-                                label: "Last 24 Hours",
-                                value: "24h",
-                                default: timeRange === "24h"
-                            },
-                            {
-                                label: "Last 7 Days",
-                                value: "7d",
-                                default: timeRange === "7d"
-                            },
-                            {
-                                label: "Last 30 Days",
-                                value: "30d",
-                                default: timeRange === "30d"
-                            }
-                        ])
-                )
+            const timeRow = new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId("time")
+                    .setPlaceholder("Time range...")
+                    .addOptions([
+                        {
+                            label: "All Time",
+                            value: "all",
+                            default: timeRange === "all"
+                        },
+                        {
+                            label: "Last Hour",
+                            value: "1h",
+                            default: timeRange === "1h"
+                        },
+                        {
+                            label: "Last 24 Hours",
+                            value: "24h",
+                            default: timeRange === "24h"
+                        },
+                        {
+                            label: "Last 7 Days",
+                            value: "7d",
+                            default: timeRange === "7d"
+                        },
+                        {
+                            label: "Last 30 Days",
+                            value: "30d",
+                            default: timeRange === "30d"
+                        }
+                    ])
+            )
 
             components.push(filterRow, timeRow)
 
             // Send initial response
-            const embed = createLogEmbed(runs, agent, { 
-                page: 1, 
+            const embed = createLogEmbed(runs, agent, {
+                page: 1,
                 filter: status,
-                timeRange 
+                timeRange
             })
 
             const message = await interaction.editReply({
@@ -372,10 +366,12 @@ module.exports = {
                         // Fetch new filtered runs
                         currentRuns = await db.TaskRun.findAll({
                             where,
-                            include: [{
-                                model: db.Task,
-                                attributes: ["name"]
-                            }],
+                            include: [
+                                {
+                                    model: db.Task,
+                                    attributes: ["name"]
+                                }
+                            ],
                             order: [["createdAt", "DESC"]],
                             limit: 100
                         })
@@ -411,11 +407,12 @@ module.exports = {
             })
 
             collector.on("end", () => {
-                interaction.editReply({
-                    components: []
-                }).catch(() => {})
+                interaction
+                    .editReply({
+                        components: []
+                    })
+                    .catch(() => {})
             })
-
         } catch (err) {
             logger.error("❌ Failed to fetch agent logs:", err)
             return interaction.editReply({

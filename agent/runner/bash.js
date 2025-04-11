@@ -17,12 +17,12 @@ function generateEnvironment(params) {
     try {
         Object.entries(params).forEach(([key, value]) => {
             // Convert all values to strings since env vars must be strings
-            env[`PARAM_${key.toUpperCase()}`] = typeof value === 'object' 
-                ? JSON.stringify(value)
-                : String(value)
+            env[`PARAM_${key.toUpperCase()}`] = typeof value === "object" ? JSON.stringify(value) : String(value)
         })
-        logger.debug("🔄 Generated environment variables:", 
-            Object.keys(params).map(k => `PARAM_${k.toUpperCase()}`))
+        logger.debug(
+            "🔄 Generated environment variables:",
+            Object.keys(params).map(k => `PARAM_${k.toUpperCase()}`)
+        )
     } catch (err) {
         logger.error("❌ Failed to convert parameters to env vars:", err)
     }
@@ -43,7 +43,7 @@ async function findGitBash() {
 
     for (const path of commonPaths) {
         try {
-            require('fs').accessSync(path)
+            require("fs").accessSync(path)
             return path
         } catch (err) {
             continue
@@ -52,10 +52,10 @@ async function findGitBash() {
 
     // Try to find git in PATH
     try {
-        const { execSync } = require('child_process')
-        const gitPath = execSync('where git').toString().trim().split('\n')[0]
+        const { execSync } = require("child_process")
+        const gitPath = execSync("where git").toString().trim().split("\n")[0]
         if (gitPath) {
-            return path.join(path.dirname(path.dirname(gitPath)), 'bin', 'bash.exe')
+            return path.join(path.dirname(path.dirname(gitPath)), "bin", "bash.exe")
         }
     } catch (err) {
         // Ignore errors
@@ -71,36 +71,32 @@ async function findGitBash() {
  * @returns {Promise<Object>} Process handle and result promise
  */
 async function createProcess(script, params = {}) {
-    return new Promise(async (resolve) => {
+    return new Promise(async resolve => {
         try {
             // Set up environment with parameters
             const env = generateEnvironment(params)
 
             // Determine which shell to use based on OS
-            let shell, shellArgs, useShell = true
-            if (os.platform() === 'win32') {
+            let shell,
+                shellArgs,
+                useShell = true
+            if (os.platform() === "win32") {
                 const gitBash = await findGitBash()
                 if (gitBash) {
                     shell = gitBash
-                    shellArgs = ['--login', '-c', script]
+                    shellArgs = ["--login", "-c", script]
                     useShell = false // Don't use shell when using Git Bash directly
                 } else {
-                    shell = 'cmd.exe'
-                    shellArgs = ['/c', script]
+                    shell = "cmd.exe"
+                    shellArgs = ["/c", script]
                 }
             } else {
-                shell = '/bin/bash'
-                shellArgs = [
-                    '--restricted',
-                    '--noprofile',
-                    '--norc',
-                    '-c',
-                    script
-                ]
+                shell = "/bin/bash"
+                shellArgs = ["--restricted", "--noprofile", "--norc", "-c", script]
             }
 
             logger.info(`🐚 Using shell: ${shell}`)
-            
+
             // Set up shell process
             const proc = spawn(shell, shellArgs, {
                 env,
@@ -175,7 +171,6 @@ async function createProcess(script, params = {}) {
                 killed = true
                 proc.kill("SIGTERM")
             }
-
         } catch (err) {
             logger.error("❌ Critical error in script execution:", err)
             resolve({

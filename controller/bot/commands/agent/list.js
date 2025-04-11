@@ -2,8 +2,8 @@
  * Agent List Command
  * Displays agent list with status and task information
  */
-const { 
-    SlashCommandSubcommandBuilder, 
+const {
+    SlashCommandSubcommandBuilder,
     EmbedBuilder,
     ActionRowBuilder,
     ButtonBuilder,
@@ -17,37 +17,18 @@ const agents = require("../../../core/agents")
 const PAGE_SIZE = 5
 
 /**
- * Format time since last seen
- * @param {Date} lastSeen Last seen timestamp
- * @returns {string} Formatted duration
- */
-function formatLastSeen(lastSeen) {
-    if (!lastSeen) return "Never"
-
-    const now = new Date()
-    const diff = now - lastSeen
-    const minutes = Math.floor(diff / 60000)
-    const hours = Math.floor(minutes / 60)
-    const days = Math.floor(hours / 24)
-
-    if (days > 0) return `${days}d ago`
-    if (hours > 0) return `${hours}h ago`
-    if (minutes > 0) return `${minutes}m ago`
-    return "Just now"
-}
-
-/**
  * Format agent status with emoji
  * @param {string} status Status value
  * @param {boolean} isOnline Current connection state
  * @returns {string} Formatted status
  */
 function formatStatus(status, isOnline) {
-    const statusEmoji = {
-        online: "🟢",
-        offline: "🔴",
-        error: "⚠️"
-    }[status] || "❓"
+    const statusEmoji =
+        {
+            online: "🟢",
+            offline: "🔴",
+            error: "⚠️"
+        }[status] || "❓"
 
     return `${statusEmoji} ${isOnline ? "Connected" : status.toUpperCase()}`
 }
@@ -64,9 +45,7 @@ function createListEmbed(agentList, options) {
     const end = Math.min(start + PAGE_SIZE, agentList.length)
     const pageAgents = agentList.slice(start, end)
 
-    const embed = new EmbedBuilder()
-        .setTitle("🤖 Agent List")
-        .setColor(0x00bcd4)
+    const embed = new EmbedBuilder().setTitle("🤖 Agent List").setColor("#00bcd4")
 
     if (agentList.length === 0) {
         embed.setDescription("No agents found matching the criteria.")
@@ -83,11 +62,11 @@ function createListEmbed(agentList, options) {
 
         description += `**${agent.agentId}**\n`
         description += `↳ ${status} | Last seen: ${lastSeen}\n`
-        
+
         if (Array.isArray(agent.ipWhitelist) && agent.ipWhitelist.length > 0) {
             description += `↳ IP: ${agent.ipWhitelist.join(", ")}\n`
         }
-        
+
         description += "\n"
     }
 
@@ -114,7 +93,8 @@ module.exports = {
         .setName("list")
         .setDescription("List registered agents")
         .addStringOption(opt =>
-            opt.setName("filter")
+            opt
+                .setName("filter")
                 .setDescription("Filter agents by status")
                 .setRequired(false)
                 .addChoices(
@@ -123,11 +103,7 @@ module.exports = {
                     { name: "Offline Only", value: "offline" }
                 )
         )
-        .addStringOption(opt =>
-            opt.setName("search")
-                .setDescription("Search agent IDs")
-                .setRequired(false)
-        ),
+        .addStringOption(opt => opt.setName("search").setDescription("Search agent IDs").setRequired(false)),
 
     async execute(interaction) {
         await interaction.deferReply()
@@ -162,19 +138,18 @@ module.exports = {
             let components = []
 
             if (totalPages > 1) {
-                const row = new ActionRowBuilder()
-                    .addComponents(
-                        new ButtonBuilder()
-                            .setCustomId("prev")
-                            .setLabel("Previous")
-                            .setStyle(ButtonStyle.Secondary)
-                            .setDisabled(true),
-                        new ButtonBuilder()
-                            .setCustomId("next")
-                            .setLabel("Next")
-                            .setStyle(ButtonStyle.Secondary)
-                            .setDisabled(agentList.length <= PAGE_SIZE)
-                    )
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId("prev")
+                        .setLabel("Previous")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(true),
+                    new ButtonBuilder()
+                        .setCustomId("next")
+                        .setLabel("Next")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(agentList.length <= PAGE_SIZE)
+                )
                 components = [row]
             }
 
@@ -204,9 +179,9 @@ module.exports = {
                     row.components[1].setDisabled(currentPage === totalPages)
 
                     // Update embed
-                    const newEmbed = createListEmbed(agentList, { 
+                    const newEmbed = createListEmbed(agentList, {
                         page: currentPage,
-                        filter 
+                        filter
                     })
 
                     await i.update({
@@ -216,12 +191,13 @@ module.exports = {
                 })
 
                 collector.on("end", () => {
-                    interaction.editReply({
-                        components: []
-                    }).catch(() => {})
+                    interaction
+                        .editReply({
+                            components: []
+                        })
+                        .catch(() => {})
                 })
             }
-
         } catch (err) {
             logger.error("❌ Failed to list agents:", err)
             return interaction.editReply({

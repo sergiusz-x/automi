@@ -19,10 +19,10 @@ if (!webhook || webhookUrl === "") {
  */
 function getStatusColor(status) {
     switch (status.toLowerCase()) {
-        case 'success': return 0x00ff00 // Green
-        case 'error': return 0xff0000   // Red
-        case 'running': return 0xffff00  // Yellow
-        default: return 0x808080        // Gray
+        case 'success': return "#00ff00" // Green
+        case 'error': return "#ff0000"   // Red
+        case 'running': return "#ffff00"  // Yellow
+        default: return "#808080"        // Gray
     }
 }
 
@@ -46,41 +46,42 @@ async function sendTaskResult(data) {
             .setColor(getStatusColor(data.status))
             .setTimestamp()
             .addFields([
-                { 
-                    name: "Status", 
+                {
+                    name: "Status",
                     value: data.status.toUpperCase(),
-                    inline: true 
+                    inline: true
                 },
-                { 
-                    name: "Duration", 
+                {
+                    name: "Duration",
                     value: `${data.durationMs}ms`,
-                    inline: true 
+                    inline: true
                 }
             ])
 
         if (data.stdout) {
-            embed.addFields([{
-                name: "Output",
-                value: `\`\`\`\n${data.stdout.slice(0, 1000)}${data.stdout.length > 1000 ? "\n..." : ""}\n\`\`\``
-            }])
+            embed.addFields([
+                {
+                    name: "Output",
+                    value: `\`\`\`\n${data.stdout.slice(0, 1000)}${data.stdout.length > 1000 ? "\n..." : ""}\n\`\`\``
+                }
+            ])
         }
 
         if (data.stderr) {
-            embed.addFields([{
-                name: "Errors",
-                value: `\`\`\`\n${data.stderr.slice(0, 1000)}${data.stderr.length > 1000 ? "\n..." : ""}\n\`\`\``
-            }])
+            embed.addFields([
+                {
+                    name: "Errors",
+                    value: `\`\`\`\n${data.stderr.slice(0, 1000)}${data.stderr.length > 1000 ? "\n..." : ""}\n\`\`\``
+                }
+            ])
         }
 
         await webhook.send({
-            embeds: [embed],
-            username: "Automi Tasks",
-            avatarURL: "https://github.com/fluidicon.png"
+            embeds: [embed]
         })
 
         logger.info(`✅ Webhook notification sent for task "${data.taskName}"`)
         return true
-
     } catch (err) {
         logger.error(`❌ Failed to send Discord webhook:`, err)
         return false
@@ -99,7 +100,7 @@ async function sendErrorLogReport(logFilePath) {
     }
 
     logger.info(`📤 Preparing error log report for Discord webhook`)
-    
+
     // Read log file for attachment if exists
     let logContent = null
     try {
@@ -108,12 +109,12 @@ async function sendErrorLogReport(logFilePath) {
             const stats = fs.statSync(logFilePath)
             const fileSize = Math.min(stats.size, 1024 * 1024)
             const buffer = Buffer.alloc(fileSize)
-            
-            const fd = fs.openSync(logFilePath, 'r')
+
+            const fd = fs.openSync(logFilePath, "r")
             fs.readSync(fd, buffer, 0, fileSize, stats.size - fileSize)
             fs.closeSync(fd)
-            
-            logContent = buffer.toString('utf8')
+
+            logContent = buffer.toString("utf8")
         }
     } catch (err) {
         logger.error(`❌ Failed to read log file for error report:`, err)
@@ -123,29 +124,30 @@ async function sendErrorLogReport(logFilePath) {
         const embed = new EmbedBuilder()
             .setTitle("🚨 Error Report")
             .setDescription("Errors have been detected in the system today.")
-            .setColor(0xff0000) // Red
+            .setColor("#ff0000") // Red
             .setTimestamp()
-            .addFields([{ 
-                name: "Log Date", 
-                value: path.basename(logFilePath).replace("controller-", "").replace(".log", ""),
-                inline: true 
-            }])
+            .addFields([
+                {
+                    name: "Log Date",
+                    value: path.basename(logFilePath).replace("controller-", "").replace(".log", ""),
+                    inline: true
+                }
+            ])
 
         await webhook.send({
             embeds: [embed],
-            username: "Automi Error Monitor",
-            avatarURL: "https://github.com/fluidicon.png",
-            files: logContent ? [
-                {
-                    attachment: Buffer.from(logContent),
-                    name: path.basename(logFilePath)
-                }
-            ] : []
+            files: logContent
+                ? [
+                      {
+                          attachment: Buffer.from(logContent),
+                          name: path.basename(logFilePath)
+                      }
+                  ]
+                : []
         })
 
         logger.info(`✅ Error report sent to Discord webhook`)
         return true
-
     } catch (err) {
         logger.error(`❌ Failed to send error report to Discord webhook:`, err)
         return false

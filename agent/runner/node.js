@@ -18,12 +18,12 @@ function generateEnvironment(params) {
     try {
         Object.entries(params).forEach(([key, value]) => {
             // Convert all values to strings since env vars must be strings
-            env[`PARAM_${key.toUpperCase()}`] = typeof value === 'object' 
-                ? JSON.stringify(value)
-                : String(value)
+            env[`PARAM_${key.toUpperCase()}`] = typeof value === "object" ? JSON.stringify(value) : String(value)
         })
-        logger.debug("🔄 Generated environment variables:", 
-            Object.keys(params).map(k => `PARAM_${k.toUpperCase()}`))
+        logger.debug(
+            "🔄 Generated environment variables:",
+            Object.keys(params).map(k => `PARAM_${k.toUpperCase()}`)
+        )
     } catch (err) {
         logger.error("❌ Failed to convert parameters to env vars:", err)
     }
@@ -37,7 +37,7 @@ function generateEnvironment(params) {
  * @returns {Promise<Object>} Process handle and result promise
  */
 async function createProcess(script, params = {}) {
-    return new Promise(async (resolve) => {
+    return new Promise(async resolve => {
         try {
             // Create temporary script file
             const tmpDir = os.tmpdir()
@@ -47,12 +47,12 @@ async function createProcess(script, params = {}) {
             const env = generateEnvironment(params)
 
             // Write script directly to temp file without additional wrapping
-            await fs.writeFile(tmpFile, script, 'utf8')
+            await fs.writeFile(tmpFile, script, "utf8")
             logger.info(`📝 Created temporary script at: ${tmpFile}`)
 
             // Execute the script using node
             logger.info("🟢 Starting Node.js script execution")
-            const proc = spawn('node', [tmpFile], {
+            const proc = spawn("node", [tmpFile], {
                 env,
                 timeout: 300000 // 5-minute timeout
             })
@@ -63,14 +63,14 @@ async function createProcess(script, params = {}) {
             let killed = false
 
             // Handle standard output
-            proc.stdout.on("data", (data) => {
+            proc.stdout.on("data", data => {
                 const output = data.toString()
                 stdout += output
                 logger.debug("📤 Node.js stdout:", output.trim())
             })
 
             // Handle error output
-            proc.stderr.on("data", (data) => {
+            proc.stderr.on("data", data => {
                 const error = data.toString()
                 stderr += error
                 hasError = true
@@ -78,7 +78,7 @@ async function createProcess(script, params = {}) {
             })
 
             // Handle process completion
-            proc.on("close", async (code) => {
+            proc.on("close", async code => {
                 try {
                     // Clean up temp file
                     await fs.unlink(tmpFile)
@@ -103,7 +103,7 @@ async function createProcess(script, params = {}) {
             })
 
             // Handle process errors
-            proc.on("error", async (err) => {
+            proc.on("error", async err => {
                 try {
                     await fs.unlink(tmpFile)
                 } catch (cleanupErr) {
@@ -123,13 +123,13 @@ async function createProcess(script, params = {}) {
             proc.on("timeout", async () => {
                 killed = true
                 proc.kill("SIGTERM")
-                
+
                 try {
                     await fs.unlink(tmpFile)
                 } catch (cleanupErr) {
                     logger.warn("⚠️ Failed to clean up temp file:", cleanupErr)
                 }
-                
+
                 logger.error("⏱️ Script execution timed out")
                 resolve({
                     success: false,
@@ -145,7 +145,6 @@ async function createProcess(script, params = {}) {
                 killed = true
                 return originalKill.call(proc, "SIGTERM")
             }
-
         } catch (err) {
             logger.error("❌ Critical error in script execution:", err)
             resolve({

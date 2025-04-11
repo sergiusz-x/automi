@@ -1,4 +1,4 @@
-const WebSocket = require('ws')
+const WebSocket = require("ws")
 const logger = require("../utils/logger")
 const db = require("../db")
 const agentState = require("./agentState")
@@ -29,12 +29,9 @@ function registerAgent(agentId, wsConnection) {
         lastSeen: Date.now()
     }
     agentState.setAgent(agentId, agent)
-    
+
     // Update agent status in database
-    db.Agent.update(
-        { status: 'online', lastSeen: new Date() },
-        { where: { agentId } }
-    ).catch(err => {
+    db.Agent.update({ status: "online", lastSeen: new Date() }, { where: { agentId } }).catch(err => {
         logger.error(`❌ Failed to update agent status in database:`, err)
     })
 
@@ -157,31 +154,31 @@ function clearTaskMeta(taskId) {
  * @param {boolean} silentMode - If true, avoid database operations
  */
 function disconnectAll(silentMode = false) {
-    const agentCount = agentState.listAgents().length;
-    logger.info(`🔌 Disconnecting ${agentCount} agents...`);
-    
+    const agentCount = agentState.listAgents().length
+    logger.info(`🔌 Disconnecting ${agentCount} agents...`)
+
     // Set global flag if in silent mode
     if (silentMode) {
-        global.isShuttingDown = true;
+        global.isShuttingDown = true
     }
-    
+
     // Close all WebSocket connections
     for (const agentId of agentState.listAgents()) {
-        const agent = agentState.getAgent(agentId);
+        const agent = agentState.getAgent(agentId)
         if (agent?.wsConnection && isSocketValid(agent.wsConnection)) {
-            agent.wsConnection.close(1000, "Server shutting down");
+            agent.wsConnection.close(1000, "Server shutting down")
         }
     }
-    
+
     // Clear agent state
     for (const agentId of agentState.listAgents()) {
-        agentState.removeAgent(agentId);
+        agentState.removeAgent(agentId)
     }
-    
+
     // Clear task tracking
-    activeTasks.clear();
-    
-    logger.info("✅ All agents disconnected");
+    activeTasks.clear()
+
+    logger.info("✅ All agents disconnected")
 }
 
 module.exports = {

@@ -14,7 +14,7 @@ module.exports = {
         const embed = new EmbedBuilder()
             .setTitle("📡 Automi System Status")
             .setDescription("⏳ Initializing...")
-            .setColor(0x00bcd4)
+            .setColor("#00bcd4")
             .setTimestamp()
 
         const msg = await interaction.channel.send({ embeds: [embed] })
@@ -24,6 +24,13 @@ module.exports = {
             messageId: msg.id
         }
 
+        // Ensure config directory exists
+        const configDir = path.dirname(configPath)
+        if (!fs.existsSync(configDir)) {
+            fs.mkdirSync(configDir, { recursive: true })
+        }
+
+        // Write config file
         fs.writeFileSync(configPath, JSON.stringify(payload, null, 4))
 
         setTimeout(() => {

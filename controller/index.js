@@ -25,10 +25,16 @@ async function startController() {
         await db.sequelize.authenticate()
         logger.info("✅ Database connection established")
 
-        // Synchronize database models
+        // Synchronize database models with force to ensure tables exist
         logger.info("🔄 Synchronizing database models...")
         await db.sequelize.sync({ alter: true })
-        logger.info("✅ Database models synchronized")
+        logger.info("✅ Database tables synchronized")
+
+        // Initialize task manager
+        logger.info("🔄 Initializing task manager...")
+        const taskManager = require("./core/taskManager")
+        await taskManager.initialize()
+        logger.info("✅ Task manager initialized")
 
         // Start WebSocket server for agent connections
         logger.info("🌐 Initializing WebSocket server...")
@@ -61,42 +67,39 @@ async function startController() {
  */
 async function gracefulShutdown() {
     logger.info("🛑 Shutting down Automi Controller...")
-    
+
     try {
         // 1. Set the global shutdown flag to prevent DB operations during shutdown
-        global.isShuttingDown = true;
-        
+        global.isShuttingDown = true
+
         // 2. Stop task scheduler
         logger.info("⏰ Stopping task scheduler...")
         startScheduler.stopAllJobs()
         logger.info("✅ Task scheduler stopped")
-        
+
         // 3. Update all agent statuses in database to offline in one batch operation
         logger.info("📊 Updating agent statuses in database...")
         try {
-            const allAgents = await db.Agent.findAll({ where: { status: 'online' } });
+            const allAgents = await db.Agent.findAll({ where: { status: "online" } })
             if (allAgents.length > 0) {
-                await db.Agent.update(
-                    { status: "offline" },
-                    { where: { status: "online" } }
-                );
-                logger.info(`✅ Updated ${allAgents.length} agents to offline status in database`);
+                await db.Agent.update({ status: "offline" }, { where: { status: "online" } })
+                logger.info(`✅ Updated ${allAgents.length} agents to offline status in database`)
             }
         } catch (dbErr) {
-            logger.error("❌ Failed to update agent statuses:", dbErr.message);
+            logger.error("❌ Failed to update agent statuses:", dbErr.message)
         }
-        
+
         // 4. Disconnect agents - notify them but don't update DB
         logger.info("🔌 Disconnecting agents...")
         const agents = require("./core/agents")
         agents.disconnectAll(true) // true = silent mode, avoid DB updates
         logger.info("✅ Agents notified about disconnection")
-        
+
         // 5. Close WebSocket server
         logger.info("🌐 Stopping WebSocket server...")
         await require("./core/ws").shutdown()
         logger.info("✅ WebSocket server stopped")
-        
+
         // 6. Close database connection
         logger.info("📊 Closing database connection...")
         await db.sequelize.close()

@@ -2,11 +2,7 @@
  * Agent Add Command
  * Registers new agent with authentication token and IP restrictions
  */
-const { 
-    SlashCommandSubcommandBuilder, 
-    EmbedBuilder,
-    MessageFlags 
-} = require("discord.js")
+const { SlashCommandSubcommandBuilder, EmbedBuilder, MessageFlags } = require("discord.js")
 const crypto = require("crypto")
 const logger = require("../../../utils/logger")
 const db = require("../../../db")
@@ -43,7 +39,7 @@ function validateIpAddress(ip) {
     if (!ip) return false
     const parts = ip.split(".")
     if (parts.length !== 4) return false
-    
+
     return parts.every(part => {
         const num = parseInt(part, 10)
         return !isNaN(num) && num >= 0 && num <= 255
@@ -59,7 +55,7 @@ function validateIpAddress(ip) {
 function createConfigEmbed(agent, token) {
     return new EmbedBuilder()
         .setTitle(`🤖 New Agent: ${agent.agentId}`)
-        .setColor(0x00bcd4)
+        .setColor("#00bcd4")
         .setDescription("Agent has been registered successfully. Use this configuration in your agent's config.json:")
         .addFields([
             {
@@ -74,9 +70,7 @@ function createConfigEmbed(agent, token) {
             },
             {
                 name: "IP Whitelist",
-                value: agent.ipWhitelist?.length > 0
-                    ? agent.ipWhitelist.join(", ")
-                    : "No IP restrictions"
+                value: agent.ipWhitelist?.length > 0 ? agent.ipWhitelist.join(", ") : "No IP restrictions"
             }
         ])
 }
@@ -86,15 +80,9 @@ module.exports = {
         .setName("add")
         .setDescription("Register a new agent")
         .addStringOption(opt =>
-            opt.setName("id")
-                .setDescription("Agent ID (letters, numbers, hyphens, underscores)")
-                .setRequired(true)
+            opt.setName("id").setDescription("Agent ID (letters, numbers, hyphens, underscores)").setRequired(true)
         )
-        .addStringOption(opt =>
-            opt.setName("ip")
-                .setDescription("Allowed IP address (optional)")
-                .setRequired(false)
-        ),
+        .addStringOption(opt => opt.setName("ip").setDescription("Allowed IP address (optional)").setRequired(false)),
 
     async execute(interaction) {
         const agentId = interaction.options.getString("id")
@@ -154,7 +142,6 @@ module.exports = {
                 embeds: [embed],
                 flags: [MessageFlags.Ephemeral]
             })
-
         } catch (err) {
             logger.error("❌ Failed to register agent:", err)
             return interaction.editReply({

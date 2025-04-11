@@ -57,44 +57,46 @@ async function getStats() {
             db.Task.count(),
             db.Task.count({ where: { enabled: true } }),
             db.Agent.count(),
-            db.TaskRun.count({ 
-                where: { 
+            db.TaskRun.count({
+                where: {
                     status: "running",
                     startedAt: {
                         [db.Sequelize.Op.gte]: new Date(Date.now() - 5 * 60 * 1000) // Last 5 minutes
                     }
-                } 
+                }
             }),
-            db.TaskRun.count({ 
-                where: { 
+            db.TaskRun.count({
+                where: {
                     createdAt: {
                         [db.Sequelize.Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000)
                     }
-                } 
+                }
             }),
-            db.TaskRun.count({ 
-                where: { 
+            db.TaskRun.count({
+                where: {
                     status: "success",
                     createdAt: {
                         [db.Sequelize.Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000)
                     }
-                } 
+                }
             }),
-            db.TaskRun.count({ 
-                where: { 
+            db.TaskRun.count({
+                where: {
                     status: "error",
                     createdAt: {
                         [db.Sequelize.Op.gte]: new Date(Date.now() - 24 * 60 * 60 * 1000)
                     }
-                } 
+                }
             }),
             // Get 5 most recent task runs with task names
             db.TaskRun.findAll({
-                include: [{
-                    model: db.Task,
-                    attributes: ['name']
-                }],
-                order: [['createdAt', 'DESC']],
+                include: [
+                    {
+                        model: db.Task,
+                        attributes: ["name"]
+                    }
+                ],
+                order: [["createdAt", "DESC"]],
                 limit: 5
             })
         ])
@@ -124,11 +126,16 @@ async function getStats() {
  */
 function getStatusEmoji(status) {
     switch (status.toLowerCase()) {
-        case 'success': return '✅'
-        case 'error': return '❌'
-        case 'running': return '⚙️'
-        case 'cancelled': return '⛔'
-        default: return '❓'
+        case "success":
+            return "✅"
+        case "error":
+            return "❌"
+        case "running":
+            return "⚙️"
+        case "cancelled":
+            return "⛔"
+        default:
+            return "❓"
     }
 }
 
@@ -137,11 +144,13 @@ function getStatusEmoji(status) {
  */
 async function createStatusEmbed(stats) {
     // Format recent runs
-    const recentRunsText = stats.recentRuns.map(run => {
-        const timestamp = Math.floor(run.createdAt.getTime() / 1000)
-        const duration = run.durationMs ? ` (${formatDuration(run.durationMs)})` : ''
-        return `${getStatusEmoji(run.status)} ${run.Task.name}${duration} - <t:${timestamp}:R>`
-    }).join('\n')
+    const recentRunsText = stats.recentRuns
+        .map(run => {
+            const timestamp = Math.floor(run.createdAt.getTime() / 1000)
+            const duration = run.durationMs ? ` (${formatDuration(run.durationMs)})` : ""
+            return `${getStatusEmoji(run.status)} ${run.Task.name}${duration} - <t:${timestamp}:R>`
+        })
+        .join("\n")
 
     const now = Math.floor(Date.now() / 1000)
     const last24h = Math.floor((Date.now() - 24 * 60 * 60 * 1000) / 1000)
@@ -149,7 +158,7 @@ async function createStatusEmbed(stats) {
     return new EmbedBuilder()
         .setTitle("📡 Automi System Status")
         .setDescription(`Statistics for period: <t:${last24h}:f> to <t:${now}:f>`)
-        .setColor(0x00bcd4)
+        .setColor("#00bcd4")
         .addFields([
             {
                 name: "Tasks",
@@ -199,7 +208,8 @@ async function updateStatus(client) {
                 logger.debug("🔄 Status message updated")
             } catch (err) {
                 logger.error("❌ Failed to update status message:", err)
-                if (err.code === 10008) { // Unknown Message error
+                if (err.code === 10008) {
+                    // Unknown Message error
                     logger.warn("⚠️ Status message not found. Disabling updates.")
                     clearInterval(updateInterval)
                     statusMessage = null
@@ -210,18 +220,20 @@ async function updateStatus(client) {
         // Update bot presence
         let status
         if (stats.runningTasks > 0) {
-            status = `⚙️ Running ${stats.runningTasks} task${stats.runningTasks !== 1 ? 's' : ''}`
+            status = `⚙️ Running ${stats.runningTasks} task${stats.runningTasks !== 1 ? "s" : ""}`
         } else {
             status = `✅ ${stats.enabledTasks}/${stats.totalTasks} tasks enabled`
         }
 
         const activity = `${stats.last24hRuns} runs (${stats.successRate}% success)`
-        
+
         await client.user.setPresence({
-            activities: [{
-                name: activity,
-                type: ActivityType.Custom
-            }],
+            activities: [
+                {
+                    name: activity,
+                    type: ActivityType.Custom
+                }
+            ],
             status: stats.runningTasks > 0 ? "dnd" : "online"
         })
 
@@ -265,10 +277,14 @@ async function startStatusUpdater(client) {
             // Save new message details
             fs.writeFileSync(
                 CONFIG_PATH,
-                JSON.stringify({
-                    channelId: channel.id,
-                    messageId: statusMessage.id
-                }, null, 4)
+                JSON.stringify(
+                    {
+                        channelId: channel.id,
+                        messageId: statusMessage.id
+                    },
+                    null,
+                    4
+                )
             )
             logger.info("✅ Created new status message")
         }
@@ -280,7 +296,7 @@ async function startStatusUpdater(client) {
 
         // Create update function with client bound
         const boundUpdateStatus = () => updateStatus(client)
-        
+
         // Start periodic updates
         updateInterval = setInterval(boundUpdateStatus, UPDATE_INTERVAL)
         logger.info("✅ Status updater initialized")

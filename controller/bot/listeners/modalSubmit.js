@@ -2,7 +2,7 @@
  * Modal Submit Handler
  * Processes submissions from Discord modals, particularly for task editing
  */
-const { MessageFlags } = require("discord.js")
+const { MessageFlags, EmbedBuilder } = require("discord.js")
 const logger = require("../../utils/logger")
 const db = require("../../db")
 
@@ -27,6 +27,69 @@ function validateScript(script) {
 
     // Add additional security validations here as needed
     return null
+}
+
+/**
+ * Validate IP address list
+ * @param {string[]} ips Array of IP addresses to validate
+ * @returns {string|null} Error message if invalid, null if valid
+ */
+function validateIpList(ips) {
+    if (!Array.isArray(ips)) return "IP list must be an array"
+
+    const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/
+    for (const ip of ips) {
+        if (ip === "*") continue
+        if (!ipv4Regex.test(ip)) {
+            return `Invalid IP address: ${ip}`
+        }
+        // Validate each octet
+        const parts = ip.split(".")
+        for (const part of parts) {
+            const num = parseInt(part, 10)
+            if (num < 0 || num > 255) {
+                return `Invalid IP address (octet out of range): ${ip}`
+            }
+        }
+    }
+    return null
+}
+
+/**
+ * Create IP whitelist update embed
+ * @param {Object} params Parameters for embed creation
+ * @returns {EmbedBuilder} Discord embed
+ */
+function createIpUpdateEmbed(params) {
+    const { agentId, oldIps, newIps, isOnline, lastSeen } = params
+    const statusEmoji = isOnline ? "🟢" : "🔴"
+    const lastSeenText = lastSeen > 0 ? `<t:${Math.floor(lastSeen / 1000)}:R>` : "Never"
+
+    return new EmbedBuilder()
+        .setTitle(`🔒 IP Whitelist Updated: ${agentId}`)
+        .setColor("#00bcd4")
+        .addFields([
+            {
+                name: "Status",
+                value: `${statusEmoji} ${isOnline ? "Online" : "Offline"}`,
+                inline: true
+            },
+            {
+                name: "Last Seen",
+                value: lastSeenText,
+                inline: true
+            },
+            {
+                name: "Previous Whitelist",
+                value: oldIps.length > 0 ? `\`${oldIps.join(", ")}\`` : "*No restrictions*",
+                inline: false
+            },
+            {
+                name: "New Whitelist",
+                value: newIps.length > 0 ? `\`${newIps.join(", ")}\`` : "*No restrictions*",
+                inline: false
+            }
+        ])
 }
 
 /**
@@ -68,9 +131,7 @@ async function handleTaskEdit(interaction, taskName) {
 
         // Format preview of script changes
         const previewLength = 100
-        const scriptPreview = script.length > previewLength
-            ? script.substring(0, previewLength) + "..."
-            : script
+        const scriptPreview = script.length > previewLength ? script.substring(0, previewLength) + "..." : script
 
         return interaction.editReply({
             content: `✅ Script updated for task \`${taskName}\`\n\`\`\`\n${scriptPreview}\n\`\`\``,
@@ -96,10 +157,8 @@ async function handleTaskCreate(interaction, modalId) {
 
     try {
         // Parse task details from modal ID
-        const [_, name, type, agentId, schedule, paramsEncoded] = modalId.split('|')
-        const params = paramsEncoded !== '_' ? 
-            JSON.parse(Buffer.from(paramsEncoded, 'base64').toString()) : 
-            {}
+        const [_, name, type, agentId, schedule, paramsEncoded] = modalId.split("|")
+        const params = paramsEncoded !== "_" ? JSON.parse(Buffer.from(paramsEncoded, "base64").toString()) : {}
 
         // Get script content from modal
         const script = interaction.fields.getTextInputValue("script")
@@ -119,7 +178,7 @@ async function handleTaskCreate(interaction, modalId) {
             type,
             script,
             agentId,
-            schedule: schedule === '_' ? null : schedule,
+            schedule: schedule === "_" ? null : schedule,
             params,
             enabled: true
         })
@@ -128,9 +187,7 @@ async function handleTaskCreate(interaction, modalId) {
 
         // Format preview of script
         const previewLength = 100
-        const scriptPreview = script.length > previewLength
-            ? script.substring(0, previewLength) + "..."
-            : script
+        const scriptPreview = script.length > previewLength ? script.substring(0, previewLength) + "..." : script
 
         return interaction.editReply({
             content: `✅ Created task \`${name}\`\n\`\`\`\n${scriptPreview}\n\`\`\``
@@ -139,6 +196,89 @@ async function handleTaskCreate(interaction, modalId) {
         logger.error(`❌ Error creating new task:`, err)
         return interaction.editReply({
             content: "❌ Failed to create task."
+        })
+    }
+}
+
+/**
+ * Handle agent IP whitelist edit modal submission
+ * @param {ModalSubmitInteraction} interaction Modal submission interaction
+ * @param {string} modalId Modal ID containing agent details
+ * @returns {Promise<void>}
+ */
+async function handleAgentIpEdit(interaction, modalId) {
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] })
+
+    try {
+        // Parse modal ID data
+        const [_, agentId] = modalId.split("|")
+        if (!agentId) {
+            return interaction.editReply({
+                content: "❌ Invalid agent ID in modal data.",
+                flags: [MessageFlags.Ephemeral]
+            })
+        }
+
+        const ipList = interaction.fields
+            .getTextInputValue("ipWhitelist")
+            .split(",")
+            .map(ip => ip.trim())
+            .filter(ip => ip)
+
+        // Find agent
+        const agent = await db.Agent.findOne({ where: { agentId } })
+        if (!agent) {
+            return interaction.editReply({
+                content: `❌ Agent \`${agentId}\` not found.`,
+                flags: [MessageFlags.Ephemeral]
+            })
+        }
+
+        // Get current IPs for comparison
+        const currentIps = Array.isArray(agent.ipWhitelist)
+            ? agent.ipWhitelist
+            : JSON.parse(agent.ipWhitelist || '["*"]')
+
+        // Validate IP list
+        const validationError = validateIpList(ipList)
+        if (validationError) {
+            return interaction.editReply({
+                content: `❌ ${validationError}`,
+                flags: [MessageFlags.Ephemeral]
+            })
+        }
+
+        // Create embed
+        const embed = new EmbedBuilder()
+            .setTitle(`🔒 IP Whitelist Updated: ${agentId}`)
+            .setColor("#00bcd4")
+            .addFields([
+                {
+                    name: "Previous Whitelist",
+                    value: currentIps.length > 0 ? `\`${currentIps.join(", ")}\`` : "*No restrictions*",
+                    inline: false
+                },
+                {
+                    name: "New Whitelist",
+                    value: ipList.length > 0 ? `\`${ipList.join(", ")}\`` : "*No restrictions*",
+                    inline: false
+                }
+            ])
+
+        // Update IP whitelist
+        await agent.update({ ipWhitelist: ipList })
+        logger.info(`✅ Updated IP whitelist for agent ${agentId}`)
+
+        return interaction.editReply({
+            content: "✅ IP whitelist updated successfully.",
+            embeds: [embed],
+            flags: [MessageFlags.Ephemeral]
+        })
+    } catch (err) {
+        logger.error("Error updating agent IP whitelist:", err)
+        return interaction.editReply({
+            content: "❌ Failed to update IP whitelist.",
+            flags: [MessageFlags.Ephemeral]
         })
     }
 }
@@ -160,6 +300,12 @@ async function handleModalSubmit(interaction) {
     if (modalId.startsWith("edit-task-")) {
         const taskName = modalId.replace("edit-task-", "")
         await handleTaskEdit(interaction, taskName)
+        return
+    }
+
+    // Handle agent IP edit modal
+    if (modalId.startsWith("edit-agent-ip")) {
+        await handleAgentIpEdit(interaction, modalId)
         return
     }
 

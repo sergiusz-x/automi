@@ -1,5 +1,5 @@
 /**
- * Agent Database Model 
+ * Agent Database Model
  * Represents a remote execution agent in the system
  */
 const { DataTypes } = require("sequelize")
@@ -57,12 +57,13 @@ module.exports = sequelize => {
                         }
                     },
                     validateIPs(value) {
-                        if (!Array.isArray(value)) return;
-                        const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/;
-                        const ipv6Regex = /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|::|::1|::([0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4})$/;
-                        
+                        if (!Array.isArray(value)) return
+                        const ipv4Regex = /^(\d{1,3}\.){3}\d{1,3}$/
+                        const ipv6Regex =
+                            /^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|::|::1|::([0-9a-fA-F]{1,4}:){0,6}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4})$/
+
                         for (const ip of value) {
-                            if (ip === "*") continue;
+                            if (ip === "*") continue
                             if (!ipv4Regex.test(ip) && !ipv6Regex.test(ip)) {
                                 throw new Error(`Invalid IP address: ${ip}`)
                             }
@@ -99,17 +100,17 @@ module.exports = sequelize => {
         {
             tableName: "agents",
             hooks: {
-                beforeValidate: (agent) => {
+                beforeValidate: agent => {
                     logger.debug(`🔍 Validating agent: ${agent.agentId}`)
                 },
-                beforeCreate: (agent) => {
+                beforeCreate: agent => {
                     logger.info(`📝 Registering new agent: ${agent.agentId}`)
                 },
-                afterCreate: (agent) => {
+                afterCreate: agent => {
                     logger.info(`✅ Agent registered: ${agent.agentId}`)
                     logger.debug(`🔑 Security: IP whitelist set to [${agent.ipWhitelist.join(", ")}]`)
                 },
-                beforeUpdate: (agent) => {
+                beforeUpdate: agent => {
                     if (agent.changed("status")) {
                         const newStatus = agent.status
                         const emoji = newStatus === "online" ? "🟢" : "🔴"
@@ -122,13 +123,13 @@ module.exports = sequelize => {
                         logger.info(`🔒 Agent ${agent.agentId} IP whitelist updated`)
                     }
                 },
-                afterUpdate: (agent) => {
+                afterUpdate: agent => {
                     logger.debug(`✅ Agent ${agent.agentId} updated`)
                 },
-                beforeDestroy: (agent) => {
+                beforeDestroy: agent => {
                     logger.warn(`🗑️ Removing agent: ${agent.agentId}`)
                 },
-                afterDestroy: (agent) => {
+                afterDestroy: agent => {
                     logger.info(`✅ Agent removed: ${agent.agentId}`)
                 }
             },

@@ -1,7 +1,6 @@
 const db = require("../db")
 const logger = require("../utils/logger")
 const { WebSocket } = require("ws")
-const { DateTime } = require("luxon")
 const agentState = require("./agentState")
 const { sendTaskResult } = require("../services/webhook")
 
@@ -12,17 +11,20 @@ const TASK_STATUSES = {
     SUCCESS: "success",
     ERROR: "error",
     CANCELLED: "cancelled"
-};
+}
 
 class TaskManager {
     constructor() {
         this.runningTasks = new Map()
         this.taskQueue = new Map()
-        
-        // Synchronize state on startup
-        this.syncRunningTasks().catch(err => {
-            logger.error(`❌ Failed to sync running tasks:`, err)
-        })
+    }
+
+    /**
+     * Initialize the task manager
+     * Should be called after database tables are created
+     */
+    async initialize() {
+        await this.syncRunningTasks()
     }
 
     /**
@@ -33,10 +35,12 @@ class TaskManager {
         // Find all tasks marked as running in DB
         const runningInDb = await db.TaskRun.findAll({
             where: { status: TASK_STATUSES.RUNNING },
-            include: [{
-                model: db.Task,
-                attributes: ["id", "name", "agentId"]
-            }]
+            include: [
+                {
+                    model: db.Task,
+                    attributes: ["id", "name", "agentId"]
+                }
+            ]
         })
 
         // Mark them as error since they were interrupted
@@ -44,7 +48,7 @@ class TaskManager {
             run.status = TASK_STATUSES.ERROR
             run.stderr = "Task interrupted by controller restart"
             await run.save()
-            
+
             logger.warn(`⚠️ Marked interrupted task ${run.Task.name} as error`)
         }
     }
@@ -57,16 +61,18 @@ class TaskManager {
     async getTaskDependencies(taskId) {
         const dependencies = await db.TaskDependency.findAll({
             where: { childTaskId: taskId },
-            include: [{
-                model: db.Task,
-                as: 'parentTask',
-                attributes: ['id', 'name', 'agentId']
-            }]
+            include: [
+                {
+                    model: db.Task,
+                    as: "parentTask",
+                    attributes: ["id", "name", "agentId"]
+                }
+            ]
         })
 
         return dependencies.map(dep => ({
             taskId: dep.parentTask.id,
-            condition: dep.condition || 'always'
+            condition: dep.condition || "always"
         }))
     }
 
@@ -77,11 +83,11 @@ class TaskManager {
      */
     async checkDependencies(taskId) {
         const dependencies = await this.getTaskDependencies(taskId)
-        
+
         for (const dep of dependencies) {
             const latestRun = await db.TaskRun.findOne({
                 where: { taskId: dep.taskId },
-                order: [['createdAt', 'DESC']]
+                order: [["createdAt", "DESC"]]
             })
 
             if (!latestRun) return false
@@ -109,21 +115,27 @@ class TaskManager {
     async getDownstreamTasks(taskId, status) {
         const dependencies = await db.TaskDependency.findAll({
             where: { parentTaskId: taskId },
-            include: [{
-                model: db.Task,
-                as: 'childTask',
-                attributes: ['id', 'name', 'agentId', 'type', 'script', 'params']
-            }]
+            include: [
+                {
+                    model: db.Task,
+                    as: "childTask",
+                    attributes: ["id", "name", "agentId", "type", "script", "params"]
+                }
+            ]
         })
 
         return dependencies
             .filter(dep => {
-                const condition = dep.condition || 'always'
+                const condition = dep.condition || "always"
                 switch (condition) {
-                    case "on:success": return status === TASK_STATUSES.SUCCESS
-                    case "on:error": return status === TASK_STATUSES.ERROR
-                    case "always": return true
-                    default: return false
+                    case "on:success":
+                        return status === TASK_STATUSES.SUCCESS
+                    case "on:error":
+                        return status === TASK_STATUSES.ERROR
+                    case "always":
+                        return true
+                    default:
+                        return false
                 }
             })
             .map(dep => dep.childTask)
@@ -138,7 +150,7 @@ class TaskManager {
     async queueTask(task, run, options = {}) {
         try {
             const canRun = await this.checkDependencies(task.id)
-            
+
             // If no run record provided, create one
             if (!run) {
                 run = await db.TaskRun.create({
@@ -172,19 +184,21 @@ class TaskManager {
         try {
             // Get agent state directly from agentState
             const agent = agentState.getAgent(task.agentId)
-            
+
             if (!agent?.wsConnection) {
                 logger.error(`❌ No WebSocket connection for agent ${task.agentId}`)
                 throw new Error("Agent offline")
             }
 
             if (agent.wsConnection.readyState !== WebSocket.OPEN) {
-                logger.error(`❌ WebSocket connection not open for agent ${task.agentId} (state: ${agent.wsConnection.readyState})`)
+                logger.error(
+                    `❌ WebSocket connection not open for agent ${task.agentId} (state: ${agent.wsConnection.readyState})`
+                )
                 throw new Error("Agent offline")
             }
 
             // Start transaction for status update
-            await db.sequelize.transaction(async (t) => {
+            await db.sequelize.transaction(async t => {
                 run.status = TASK_STATUSES.RUNNING
                 run.startedAt = new Date()
                 await run.save({ transaction: t })
@@ -206,7 +220,7 @@ class TaskManager {
                 agent.wsConnection.send(JSON.stringify(message))
                 this.runningTasks.set(run.id, { task, run, agent })
             })
-            
+
             // Send initial webhook notification
             await sendTaskResult({
                 taskId: task.id,
@@ -218,13 +232,12 @@ class TaskManager {
                 exitCode: null,
                 durationMs: 0
             })
-            
-            return true
 
+            return true
         } catch (err) {
             logger.error(`❌ Error executing task ${task.name}:`, err)
             // Start transaction for error update
-            await db.sequelize.transaction(async (t) => {
+            await db.sequelize.transaction(async t => {
                 run.status = TASK_STATUSES.ERROR
                 run.stderr = err.message
                 await run.save({ transaction: t })
@@ -253,14 +266,13 @@ class TaskManager {
      */
     async cancelTask(taskId) {
         // Find running task
-        const runningTask = Array.from(this.runningTasks.values())
-            .find(({ task }) => task.id === taskId);
+        const runningTask = Array.from(this.runningTasks.values()).find(({ task }) => task.id === taskId)
 
         if (!runningTask) {
-            return false;
+            return false
         }
 
-        const { task, run, agent } = runningTask;
+        const { task, run, agent } = runningTask
 
         try {
             // Send cancel message to agent
@@ -270,24 +282,23 @@ class TaskManager {
                     taskId: task.id,
                     runId: run.id
                 }
-            };
+            }
 
-            agent.wsConnection.send(JSON.stringify(message));
+            agent.wsConnection.send(JSON.stringify(message))
 
             // Update run status
-            run.status = TASK_STATUSES.CANCELLED;
-            run.stderr = "Task cancelled by user";
-            await run.save();
+            run.status = TASK_STATUSES.CANCELLED
+            run.stderr = "Task cancelled by user"
+            await run.save()
 
             // Remove from running tasks
-            this.runningTasks.delete(run.id);
+            this.runningTasks.delete(run.id)
 
-            logger.info(`Task ${task.name} cancelled`);
-            return true;
-
+            logger.info(`Task ${task.name} cancelled`)
+            return true
         } catch (err) {
-            logger.error(`Failed to cancel task ${task.name}:`, err);
-            return false;
+            logger.error(`Failed to cancel task ${task.name}:`, err)
+            return false
         }
     }
 
@@ -306,22 +317,25 @@ class TaskManager {
             let retries = 3
             while (retries > 0) {
                 try {
-                    await db.sequelize.transaction({
-                        isolationLevel: db.Sequelize.Transaction.ISOLATION_LEVELS.READ_COMMITTED
-                    }, async (t) => {
-                        // Update run record
-                        run.status = result.error ? TASK_STATUSES.ERROR : TASK_STATUSES.SUCCESS
-                        run.stdout = result.stdout
-                        run.stderr = result.stderr
-                        run.durationMs = result.durationMs || Math.max(0, new Date() - run.startedAt)
-                        await run.save({ transaction: t })
+                    await db.sequelize.transaction(
+                        {
+                            isolationLevel: db.Sequelize.Transaction.ISOLATION_LEVELS.READ_COMMITTED
+                        },
+                        async t => {
+                            // Update run record
+                            run.status = result.error ? TASK_STATUSES.ERROR : TASK_STATUSES.SUCCESS
+                            run.stdout = result.stdout
+                            run.stderr = result.stderr
+                            run.durationMs = result.durationMs || Math.max(0, new Date() - run.startedAt)
+                            await run.save({ transaction: t })
 
-                        // Get and queue downstream tasks
-                        const downstreamTasks = await this.getDownstreamTasks(task.id, run.status)
-                        for (const downTask of downstreamTasks) {
-                            await this.queueTask(downTask)
+                            // Get and queue downstream tasks
+                            const downstreamTasks = await this.getDownstreamTasks(task.id, run.status)
+                            for (const downTask of downstreamTasks) {
+                                await this.queueTask(downTask)
+                            }
                         }
-                    })
+                    )
                     break // If successful, exit retry loop
                 } catch (err) {
                     retries--
@@ -360,12 +374,11 @@ class TaskManager {
                 await agent.update({
                     status: "online",
                     lastSeen: new Date()
-                });
+                })
             }
 
             // Check queued tasks for this agent
-            const queuedTasks = Array.from(this.taskQueue.entries())
-                .filter(([_, { task }]) => task.agentId === agentId)
+            const queuedTasks = Array.from(this.taskQueue.entries()).filter(([_, { task }]) => task.agentId === agentId)
 
             for (const [taskId, queued] of queuedTasks) {
                 const canRun = await this.checkDependencies(taskId)
@@ -375,7 +388,7 @@ class TaskManager {
                 }
             }
         } catch (err) {
-            logger.error(`❌ Error handling agent connection for ${agentId}:`, err.message || 'Unknown error')
+            logger.error(`❌ Error handling agent connection for ${agentId}:`, err.message || "Unknown error")
             logger.debug(`Error details: ${JSON.stringify(err, Object.getOwnPropertyNames(err))}`)
         }
     }
@@ -388,10 +401,10 @@ class TaskManager {
         try {
             // If system is shutting down, skip database updates
             if (global.isShuttingDown) {
-                logger.debug(`Skipping database update for agent ${agentId} during shutdown`);
-                return;
+                logger.debug(`Skipping database update for agent ${agentId} during shutdown`)
+                return
             }
-            
+
             // Update agent status - using update instead of direct assignment of wsConnection
             const agent = await db.Agent.findOne({ where: { agentId } })
             if (agent) {
@@ -401,8 +414,7 @@ class TaskManager {
             }
 
             // Mark running tasks as error
-            const affectedRuns = Array.from(this.runningTasks.values())
-                .filter(({ agent }) => agent.agentId === agentId)
+            const affectedRuns = Array.from(this.runningTasks.values()).filter(({ agent }) => agent.agentId === agentId)
 
             for (const { task, run } of affectedRuns) {
                 run.status = TASK_STATUSES.ERROR
@@ -411,7 +423,7 @@ class TaskManager {
                 this.runningTasks.delete(run.id)
             }
         } catch (err) {
-            logger.error(`❌ Error handling agent disconnect for ${agentId}:`, err.message || 'Unknown error')
+            logger.error(`❌ Error handling agent disconnect for ${agentId}:`, err.message || "Unknown error")
             logger.debug(`Error details: ${JSON.stringify(err, Object.getOwnPropertyNames(err))}`)
         }
     }
@@ -436,14 +448,14 @@ class TaskManager {
                 status: TASK_STATUSES.RUNNING
             }
         })
-        
+
         if (runningTask) {
             logger.error(`❌ Task ${task.name} is already running`)
             throw new Error(`Task ${task.name} is already running`)
         }
 
         const agentId = options.agentId || task.agentId
-        
+
         if (!agentState.isAgentOnline(agentId)) {
             logger.error(`❌ Agent ${agentId} not connected`)
             throw new Error(`Agent ${agentId} not connected`)

@@ -51,13 +51,18 @@ function clearTaskMeta(taskId) {
 function connect() {
     logger.info(`🔌 Connecting to controller at ${config.controllerUrl}...`)
 
-    socket = new WebSocket(config.controllerUrl)
+    socket = new WebSocket(config.controllerUrl, {
+        headers: {
+            "User-Agent": "Automi-Agent/1.0"
+        }
+    })
+    logger.setSocket(socket)
 
     // Connection established successfully
     socket.on("open", () => {
         reconnectAttempt = 0 // Reset reconnect counter on successful connection
         logger.info("✅ Connected to controller. Sending handshake...")
-        
+
         // Send authentication data
         socket.send(
             JSON.stringify({
@@ -69,7 +74,7 @@ function connect() {
     })
 
     // Handle incoming messages
-    socket.on("message", async (data) => {
+    socket.on("message", async data => {
         try {
             const message = JSON.parse(data)
 
@@ -101,7 +106,9 @@ function connect() {
 
                         // Handle process result
                         const result = await process
-                        logger.info(`✅ Script execution completed with status: ${result.success ? 'success' : 'error'}`)
+                        logger.info(
+                            `✅ Script execution completed with status: ${result.success ? "success" : "error"}`
+                        )
 
                         // Clear task tracking
                         runningTasks.delete(taskId)
@@ -112,7 +119,6 @@ function connect() {
                             ...result,
                             duration: Date.now() - startTime
                         })
-
                     } catch (err) {
                         logger.error(`❌ Error executing task ${name}:`, err)
                         sendTaskResult(message.payload, {
@@ -148,7 +154,6 @@ function connect() {
                     break
                 }
             }
-
         } catch (err) {
             logger.error("❌ Error processing message:", err)
         }
@@ -179,7 +184,7 @@ function connect() {
         const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), MAX_RECONNECT_DELAY)
         reconnectAttempt++
 
-        logger.info(`🔄 Reconnecting in ${delay/1000} seconds...`)
+        logger.info(`🔄 Reconnecting in ${delay / 1000} seconds...`)
         setTimeout(connect, delay)
     })
 
@@ -224,7 +229,7 @@ function sendTaskResult(task, result) {
 // Handle process termination
 process.on("SIGTERM", () => {
     logger.info("🛑 Received SIGTERM - shutting down...")
-    
+
     // Kill any running tasks
     for (const [taskId, { process, task, startTime }] of runningTasks.entries()) {
         try {
@@ -250,7 +255,7 @@ process.on("SIGTERM", () => {
 
 process.on("SIGINT", () => {
     logger.info("🛑 Received SIGINT - shutting down...")
-    
+
     // Kill any running tasks
     for (const [taskId, { process, task, startTime }] of runningTasks.entries()) {
         try {

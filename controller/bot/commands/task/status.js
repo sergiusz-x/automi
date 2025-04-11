@@ -2,8 +2,8 @@
  * Task Status Command
  * Shows detailed task status and execution history
  */
-const { 
-    SlashCommandSubcommandBuilder, 
+const {
+    SlashCommandSubcommandBuilder,
     EmbedBuilder,
     ActionRowBuilder,
     ButtonBuilder,
@@ -52,9 +52,9 @@ function createStatusEmbed(task, runs) {
 
     const embed = new EmbedBuilder()
         .setTitle(`Task Status: ${task.name}`)
-        .setColor(task.enabled ? 0x00ff00 : 0xff0000)
+        .setColor(task.enabled ? "#00ff00" : "#ff0000")
         .addFields([
-            { 
+            {
                 name: "Configuration",
                 value: [
                     `**Type:** ${task.type}`,
@@ -75,12 +75,14 @@ function createStatusEmbed(task, runs) {
 
     // Add recent executions
     if (recentRuns.length > 0) {
-        const recentRunsField = recentRuns.map(run => {
-            const status = run.status === "success" ? "✅" : "❌"
-            const timestamp = Math.floor(run.createdAt.getTime() / 1000)
-            const duration = run.durationMs ? `${run.durationMs}ms` : "N/A"
-            return `${status} <t:${timestamp}:t> (${duration})`
-        }).join("\n")
+        const recentRunsField = recentRuns
+            .map(run => {
+                const status = run.status === "success" ? "✅" : "❌"
+                const timestamp = Math.floor(run.createdAt.getTime() / 1000)
+                const duration = run.durationMs ? `${run.durationMs}ms` : "N/A"
+                return `${status} <t:${timestamp}:t> (${duration})`
+            })
+            .join("\n")
 
         embed.addFields([
             {
@@ -116,10 +118,7 @@ module.exports = {
         .setName("status")
         .setDescription("Show task status and recent executions")
         .addStringOption(option =>
-            option.setName("name")
-                .setDescription("Task name")
-                .setRequired(true)
-                .setAutocomplete(true)
+            option.setName("name").setDescription("Task name").setRequired(true).setAutocomplete(true)
         ),
 
     async autocomplete(interaction) {
@@ -180,13 +179,12 @@ module.exports = {
             // Create run button if task is enabled
             const components = []
             if (task.enabled && agents.isAgentOnline(task.agentId)) {
-                const row = new ActionRowBuilder()
-                    .addComponents(
-                        new ButtonBuilder()
-                            .setCustomId(`run-task-${task.name}`)
-                            .setLabel("Run Now")
-                            .setStyle(ButtonStyle.Primary)
-                    )
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId(`run-task-${task.name}`)
+                        .setLabel("Run Now")
+                        .setStyle(ButtonStyle.Primary)
+                )
                 components.push(row)
             }
 
@@ -200,10 +198,7 @@ module.exports = {
             // Handle run button if present
             if (components.length > 0) {
                 const collector = message.createMessageComponentCollector({
-                    filter: i => (
-                        i.customId === `run-task-${task.name}` &&
-                        i.user.id === interaction.user.id
-                    ),
+                    filter: i => i.customId === `run-task-${task.name}` && i.user.id === interaction.user.id,
                     time: 60000 // 1 minute
                 })
 
@@ -213,11 +208,11 @@ module.exports = {
                             content: "🚀 Triggering task execution...",
                             components: []
                         })
-                        
+
                         // Actually run the task
                         logger.info(`Manually triggering task: ${task.name}`)
                         await taskManager.runTask(task.id)
-                        
+
                         await i.editReply({
                             content: `✅ Task \`${task.name}\` has been triggered. Check logs for execution results.`,
                             embeds: [embed],
@@ -235,14 +230,15 @@ module.exports = {
 
                 collector.on("end", collected => {
                     if (collected.size === 0) {
-                        interaction.editReply({
-                            embeds: [embed],
-                            components: []
-                        }).catch(() => {})
+                        interaction
+                            .editReply({
+                                embeds: [embed],
+                                components: []
+                            })
+                            .catch(() => {})
                     }
                 })
             }
-
         } catch (err) {
             logger.error("❌ Failed to show task status:", err)
             await interaction.editReply({

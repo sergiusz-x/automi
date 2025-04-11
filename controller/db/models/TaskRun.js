@@ -11,7 +11,7 @@ const logger = require("../../utils/logger")
  * @property {string} agentId - ID of the agent that ran the task
  * @property {('pending'|'running'|'success'|'error'|'cancelled')} status - Execution result
  * @property {number} exitCode - Process exit code
- * @property {string} stdout - Standard output from execution 
+ * @property {string} stdout - Standard output from execution
  * @property {string} stderr - Error output from execution
  * @property {number} durationMs - Execution time in milliseconds
  * @property {Date} startedAt - Start time of the execution
@@ -91,13 +91,13 @@ module.exports = sequelize => {
         {
             tableName: "task_runs",
             hooks: {
-                beforeValidate: (run) => {
+                beforeValidate: run => {
                     logger.debug(`🔍 Validating task run for task ${run.taskId}`)
                 },
-                beforeCreate: (run) => {
+                beforeCreate: run => {
                     logger.debug(`📝 Recording execution for task ${run.taskId}`)
                 },
-                afterCreate: (run) => {
+                afterCreate: run => {
                     const status = {
                         pending: "⏳",
                         running: "⚙️",
@@ -110,10 +110,10 @@ module.exports = sequelize => {
                         `${status} Task ${run.taskId} execution recorded - Agent: ${run.agentId}, Duration: ${duration}`
                     )
                 },
-                beforeDestroy: (run) => {
+                beforeDestroy: run => {
                     logger.warn(`🗑️ Deleting execution record for task ${run.taskId}`)
                 },
-                afterDestroy: (run) => {
+                afterDestroy: run => {
                     logger.info(`✅ Execution record deleted for task ${run.taskId}`)
                 }
             },

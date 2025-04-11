@@ -3,7 +3,6 @@
  * Manages agent connections and message processing
  */
 const logger = require("../../utils/logger")
-const agents = require("../agents")
 const db = require("../../db")
 const taskManager = require("../taskManager")
 const { sendTaskResult } = require("../../services/webhook")
@@ -46,8 +45,19 @@ function checkRateLimit(agentId) {
  * @returns {boolean} True if token is valid
  */
 function validateAuthToken(agent, token) {
-    // TODO: Implement more secure token comparison (timing safe)
-    return agent.token === token
+    if (!agent || !token) {
+        return false
+    }
+
+    // Use timing-safe comparison to prevent timing attacks
+    try {
+        const crypto = require("crypto")
+        return crypto.timingSafeEqual(Buffer.from(agent.token, "utf8"), Buffer.from(token, "utf8"))
+    } catch (err) {
+        logger.error(`❌ Token validation error:`, err)
+        // If error occurs (e.g. different buffer lengths), return false
+        return false
+    }
 }
 
 /**
@@ -57,29 +67,84 @@ function validateAuthToken(agent, token) {
  * @returns {boolean} True if IP is allowed
  */
 function validateIpAddress(agent, ip) {
-    // Parse ipWhitelist if it's a string
-    let whitelist;
-    try {
-        whitelist = typeof agent.ipWhitelist === 'string' 
-            ? JSON.parse(agent.ipWhitelist) 
-            : agent.ipWhitelist;
-    } catch (err) {
-        logger.error(`❌ Failed to parse ipWhitelist for agent ${agent.agentId}:`, err);
-        return false;
+    if (!agent || !ip) {
+        logger.warn(`❌ Missing agent record or IP for validation`)
+        return false
     }
 
-    // If list is empty or invalid, no IP is allowed
+    // Parse ipWhitelist if it's a string
+    let whitelist
+    try {
+        whitelist = typeof agent.ipWhitelist === "string" ? JSON.parse(agent.ipWhitelist) : agent.ipWhitelist
+    } catch (err) {
+        logger.error(`❌ Failed to parse ipWhitelist for agent ${agent.agentId}:`, err)
+        return false
+    }
+
+    // If list is empty or invalid, use strict mode (reject all)
     if (!Array.isArray(whitelist) || whitelist.length === 0) {
-        return false;
+        logger.warn(`⚠️ Agent ${agent.agentId} has empty IP whitelist - rejecting connection`)
+        return false
     }
-    
+
     // If there's a wildcard (*), all IPs are allowed
-    if (whitelist.includes('*')) {
-        return true;
+    if (whitelist.includes("*")) {
+        logger.info(`⚠️ Agent ${agent.agentId} allows all IPs (wildcard)`)
+        return true
     }
-    
-    // Check if IP is on the whitelist
-    return whitelist.includes(ip);
+
+    // Check for CIDR notation in whitelist (e.g. 192.168.1.0/24)
+    for (const entry of whitelist) {
+        if (entry.includes("/")) {
+            if (isIpInCidrRange(ip, entry)) {
+                return true
+            }
+            continue
+        }
+
+        // Direct IP match
+        if (entry === ip) {
+            return true
+        }
+    }
+
+    logger.warn(`❌ IP ${ip} not in whitelist for agent ${agent.agentId}`)
+    return false
+}
+
+/**
+ * Check if IP is in CIDR range
+ * @param {string} ip - IP address to check
+ * @param {string} cidr - CIDR range (e.g. 192.168.1.0/24)
+ * @returns {boolean} - True if IP is in range
+ */
+function isIpInCidrRange(ip, cidr) {
+    try {
+        const [range, bits] = cidr.split("/")
+        const mask = parseInt(bits, 10)
+
+        if (isNaN(mask) || mask < 0 || mask > 32) {
+            return false
+        }
+
+        const ipInt = ipToInt(ip)
+        const rangeInt = ipToInt(range)
+        const maskInt = (0xffffffff << (32 - mask)) >>> 0
+
+        return (ipInt & maskInt) === (rangeInt & maskInt)
+    } catch (err) {
+        logger.error(`❌ CIDR check error:`, err)
+        return false
+    }
+}
+
+/**
+ * Convert IP address to integer
+ * @param {string} ip - IP address
+ * @returns {number} - Integer representation
+ */
+function ipToInt(ip) {
+    return ip.split(".").reduce((int, octet) => (int << 8) + parseInt(octet, 10), 0) >>> 0
 }
 
 /**
@@ -93,9 +158,9 @@ async function processTaskResult(agentId, payload) {
         const run = await db.TaskRun.findOne({
             where: {
                 taskId: parseInt(payload.taskId, 10),
-                status: 'running'
+                status: "running"
             },
-            order: [['createdAt', 'DESC']]
+            order: [["createdAt", "DESC"]]
         })
 
         if (!run) {
@@ -104,7 +169,7 @@ async function processTaskResult(agentId, payload) {
         }
 
         // Map agent status to run status
-        const status = payload.status === 'success' ? 'success' : 'error'
+        const status = payload.status === "success" ? "success" : "error"
 
         // Calculate duration if not provided
         const durationMs = payload.durationMs || (run.startedAt ? Date.now() - run.startedAt.getTime() : 0)
@@ -113,25 +178,28 @@ async function processTaskResult(agentId, payload) {
         let retries = 3
         while (retries > 0) {
             try {
-                await db.sequelize.transaction({
-                    isolationLevel: db.Sequelize.Transaction.ISOLATION_LEVELS.READ_COMMITTED
-                }, async (t) => {
-                    run.status = status
-                    run.stdout = payload.stdout || ''
-                    run.stderr = payload.stderr || ''
-                    run.exitCode = payload.exitCode
-                    run.durationMs = durationMs
-                    run.finishedAt = new Date()
-                    await run.save({ transaction: t })
-                })
+                await db.sequelize.transaction(
+                    {
+                        isolationLevel: db.Sequelize.Transaction.ISOLATION_LEVELS.READ_COMMITTED
+                    },
+                    async t => {
+                        run.status = status
+                        run.stdout = payload.stdout || ""
+                        run.stderr = payload.stderr || ""
+                        run.exitCode = payload.exitCode
+                        run.durationMs = durationMs
+                        run.finishedAt = new Date()
+                        await run.save({ transaction: t })
+                    }
+                )
 
                 // Notify task manager about completion outside of transaction
                 await taskManager.handleTaskComplete(run.id, {
-                    success: status === 'success',
-                    stdout: payload.stdout || '',
-                    stderr: payload.stderr || '',
+                    success: status === "success",
+                    stdout: payload.stdout || "",
+                    stderr: payload.stderr || "",
                     durationMs,
-                    error: status === 'error'
+                    error: status === "error"
                 })
 
                 // Send webhook notification
@@ -140,14 +208,13 @@ async function processTaskResult(agentId, payload) {
                     taskName: payload.name,
                     agentId: agentId,
                     status: status,
-                    stdout: payload.stdout || '',
-                    stderr: payload.stderr || '',
+                    stdout: payload.stdout || "",
+                    stderr: payload.stderr || "",
                     exitCode: payload.exitCode,
                     durationMs: durationMs
                 })
 
                 break // If successful, exit retry loop
-
             } catch (err) {
                 retries--
                 if (retries === 0) throw err
@@ -155,12 +222,11 @@ async function processTaskResult(agentId, payload) {
                 await new Promise(resolve => setTimeout(resolve, (3 - retries) * 1000))
             }
         }
-
     } catch (err) {
         logger.error(`❌ Error processing task result:`, err)
         // Try to update run status to error if something went wrong
         try {
-            run.status = 'error'
+            run.status = "error"
             run.stderr = err.message
             await run.save()
         } catch (saveErr) {
@@ -177,7 +243,7 @@ async function processTaskResult(agentId, payload) {
 function handleAgentConnection(socket, req) {
     const ip = req.socket.remoteAddress
     logger.info(`🔌 New WebSocket connection from ${ip}`)
-    
+
     socket.on("open", () => {
         logger.info(`🔗 WebSocket connection established with ${socket.agentId || "unknown"}`)
     })
@@ -230,7 +296,7 @@ function handleAgentConnection(socket, req) {
             await agent.update({
                 lastSeen: new Date(),
                 status: "online"
-            });
+            })
 
             // Complete authentication
             authenticated = true
@@ -262,6 +328,11 @@ function handleAgentConnection(socket, req) {
                         return
                     }
 
+                    if (message.type === "agent_error" && message.payload) {
+                        logger.error(`❌ Agent ${agentId} reported error: ${message.payload.error} (at ${message.payload.timestamp})`)
+                        return
+                    }
+
                     logger.debug(`📩 Unhandled message from ${agentId}:`, message)
                 } catch (err) {
                     logger.warn(`❌ Invalid message from agent ${agentId}:`, err.message)
@@ -277,22 +348,18 @@ function handleAgentConnection(socket, req) {
                 // Skip database operations if system is shutting down
                 if (global.isShuttingDown) {
                     logger.debug(`Skipping database update for agent ${agentId} - system is shutting down`)
-                    return;
+                    return
                 }
 
                 try {
-                    await db.Agent.update(
-                        { status: "offline" },
-                        { where: { agentId } }
-                    )
+                    await db.Agent.update({ status: "offline" }, { where: { agentId } })
                     // Notify task manager about disconnection
                     taskManager.handleAgentDisconnect(agentId)
                 } catch (err) {
-                    logger.error(`❌ Failed to update agent status for ${agentId}:`, err.message || 'Unknown error');
-                    logger.debug(`Error details: ${JSON.stringify(err, Object.getOwnPropertyNames(err))}`);
+                    logger.error(`❌ Failed to update agent status for ${agentId}:`, err.message || "Unknown error")
+                    logger.debug(`Error details: ${JSON.stringify(err, Object.getOwnPropertyNames(err))}`)
                 }
             })
-
         } catch (err) {
             logger.error(`❌ Error processing handshake:`, err)
             socket.close(4000, "Invalid message format")

@@ -2,16 +2,15 @@
  * Recent Logs Command
  * View recent task executions across all agents
  */
-const { 
-    SlashCommandSubcommandBuilder, 
+const {
+    SlashCommandSubcommandBuilder,
     EmbedBuilder,
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
     StringSelectMenuBuilder,
-    MessageFlags 
+    MessageFlags
 } = require("discord.js")
-const { DateTime } = require("luxon")
 const logger = require("../../../utils/logger")
 const db = require("../../../db")
 
@@ -60,9 +59,7 @@ function createLogEmbed(runs, options) {
     const end = Math.min(start + PAGE_SIZE, runs.length)
     const pageRuns = runs.slice(start, end)
 
-    const embed = new EmbedBuilder()
-        .setTitle("📜 Recent Task Executions")
-        .setColor(0x00bcd4)
+    const embed = new EmbedBuilder().setTitle("📜 Recent Task Executions").setColor("#00bcd4")
 
     if (runs.length === 0) {
         embed.setDescription("No execution logs found matching the criteria.")
@@ -72,17 +69,20 @@ function createLogEmbed(runs, options) {
     // Add run entries
     let description = ""
     for (const run of pageRuns) {
-        const status = {
-            success: "✅",
-            error: "❌",
-            pending: "⏳"
-        }[run.status] || "❓"
+        const status =
+            {
+                success: "✅",
+                error: "❌",
+                pending: "⏳"
+            }[run.status] || "❓"
 
         // Convert to Unix timestamp (seconds)
         const timestamp = Math.floor(run.createdAt.getTime() / 1000)
 
         description += `**${run.Task.name}** on \`${run.Task.agentId}\`\n`
-        description += `↳ ${status} ${run.status.toUpperCase()} | <t:${timestamp}:R> | Duration: ${formatDuration(run.durationMs)}\n`
+        description += `↳ ${status} ${run.status.toUpperCase()} | <t:${timestamp}:R> | Duration: ${formatDuration(
+            run.durationMs
+        )}\n`
 
         if (run.stderr?.trim()) {
             description += "```diff\n"
@@ -104,7 +104,6 @@ function createLogEmbed(runs, options) {
     // Add summary field
     const totalRuns = runs.length
     const successRuns = runs.filter(r => r.status === "success").length
-    const errorRuns = runs.filter(r => r.status === "error").length
     const uniqueTasks = new Set(runs.map(r => r.Task.name)).size
     const uniqueAgents = new Set(runs.map(r => r.Task.agentId)).size
 
@@ -129,7 +128,8 @@ module.exports = {
         .setName("recent")
         .setDescription("View recent task executions")
         .addStringOption(opt =>
-            opt.setName("status")
+            opt
+                .setName("status")
                 .setDescription("Filter by status")
                 .setRequired(false)
                 .addChoices(
@@ -139,7 +139,8 @@ module.exports = {
                 )
         )
         .addStringOption(opt =>
-            opt.setName("time")
+            opt
+                .setName("time")
                 .setDescription("Time range")
                 .setRequired(false)
                 .addChoices(
@@ -149,16 +150,10 @@ module.exports = {
                 )
         )
         .addStringOption(opt =>
-            opt.setName("agent")
-                .setDescription("Filter by agent ID")
-                .setRequired(false)
-                .setAutocomplete(true)
+            opt.setName("agent").setDescription("Filter by agent ID").setRequired(false).setAutocomplete(true)
         )
         .addStringOption(opt =>
-            opt.setName("task")
-                .setDescription("Filter by task name")
-                .setRequired(false)
-                .setAutocomplete(true)
+            opt.setName("task").setDescription("Filter by task name").setRequired(false).setAutocomplete(true)
         ),
 
     async autocomplete(interaction) {
@@ -229,11 +224,13 @@ module.exports = {
             // Fetch runs with task info
             const runs = await db.TaskRun.findAll({
                 where: runWhere,
-                include: [{
-                    model: db.Task,
-                    where: taskWhere,
-                    attributes: ["name", "agentId"]
-                }],
+                include: [
+                    {
+                        model: db.Task,
+                        where: taskWhere,
+                        attributes: ["name", "agentId"]
+                    }
+                ],
                 order: [["createdAt", "DESC"]],
                 limit: 100
             })
@@ -243,70 +240,67 @@ module.exports = {
             let components = []
 
             if (totalPages > 1) {
-                const row = new ActionRowBuilder()
-                    .addComponents(
-                        new ButtonBuilder()
-                            .setCustomId("prev")
-                            .setLabel("Previous")
-                            .setStyle(ButtonStyle.Secondary)
-                            .setDisabled(true),
-                        new ButtonBuilder()
-                            .setCustomId("next")
-                            .setLabel("Next")
-                            .setStyle(ButtonStyle.Secondary)
-                            .setDisabled(runs.length <= PAGE_SIZE)
-                    )
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId("prev")
+                        .setLabel("Previous")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(true),
+                    new ButtonBuilder()
+                        .setCustomId("next")
+                        .setLabel("Next")
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(runs.length <= PAGE_SIZE)
+                )
                 components.push(row)
             }
 
             // Add filter menus
-            const filterRow = new ActionRowBuilder()
-                .addComponents(
-                    new StringSelectMenuBuilder()
-                        .setCustomId("filter")
-                        .setPlaceholder("Filter by status...")
-                        .addOptions([
-                            {
-                                label: "All Runs",
-                                value: "all",
-                                default: status === "all"
-                            },
-                            {
-                                label: "Success Only",
-                                value: "success",
-                                default: status === "success"
-                            },
-                            {
-                                label: "Errors Only",
-                                value: "error",
-                                default: status === "error"
-                            }
-                        ])
-                )
+            const filterRow = new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId("filter")
+                    .setPlaceholder("Filter by status...")
+                    .addOptions([
+                        {
+                            label: "All Runs",
+                            value: "all",
+                            default: status === "all"
+                        },
+                        {
+                            label: "Success Only",
+                            value: "success",
+                            default: status === "success"
+                        },
+                        {
+                            label: "Errors Only",
+                            value: "error",
+                            default: status === "error"
+                        }
+                    ])
+            )
 
-            const timeRow = new ActionRowBuilder()
-                .addComponents(
-                    new StringSelectMenuBuilder()
-                        .setCustomId("time")
-                        .setPlaceholder("Time range...")
-                        .addOptions([
-                            {
-                                label: "Last Hour",
-                                value: "1h",
-                                default: timeRange === "1h"
-                            },
-                            {
-                                label: "Last 24 Hours",
-                                value: "24h",
-                                default: timeRange === "24h"
-                            },
-                            {
-                                label: "Last 7 Days",
-                                value: "7d",
-                                default: timeRange === "7d"
-                            }
-                        ])
-                )
+            const timeRow = new ActionRowBuilder().addComponents(
+                new StringSelectMenuBuilder()
+                    .setCustomId("time")
+                    .setPlaceholder("Time range...")
+                    .addOptions([
+                        {
+                            label: "Last Hour",
+                            value: "1h",
+                            default: timeRange === "1h"
+                        },
+                        {
+                            label: "Last 24 Hours",
+                            value: "24h",
+                            default: timeRange === "24h"
+                        },
+                        {
+                            label: "Last 7 Days",
+                            value: "7d",
+                            default: timeRange === "7d"
+                        }
+                    ])
+            )
 
             components.push(filterRow, timeRow)
 
@@ -357,11 +351,13 @@ module.exports = {
                         // Fetch new filtered runs
                         currentRuns = await db.TaskRun.findAll({
                             where: runWhere,
-                            include: [{
-                                model: db.Task,
-                                where: taskWhere,
-                                attributes: ["name", "agentId"]
-                            }],
+                            include: [
+                                {
+                                    model: db.Task,
+                                    where: taskWhere,
+                                    attributes: ["name", "agentId"]
+                                }
+                            ],
                             order: [["createdAt", "DESC"]],
                             limit: 100
                         })
@@ -397,11 +393,12 @@ module.exports = {
             })
 
             collector.on("end", () => {
-                interaction.editReply({
-                    components: []
-                }).catch(() => {})
+                interaction
+                    .editReply({
+                        components: []
+                    })
+                    .catch(() => {})
             })
-
         } catch (err) {
             logger.error("❌ Failed to fetch recent logs:", err)
             return interaction.editReply({

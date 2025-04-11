@@ -2,7 +2,6 @@
  * Logging Utility Module
  * Provides consistent logging across the controller application with file rotation
  */
-const chalk = require("chalk")
 const fs = require("fs")
 const path = require("path")
 const winston = require("winston")
@@ -18,18 +17,25 @@ if (!fs.existsSync(logsDir)) {
 // Path for storing error state
 const errorStatePath = path.join(logsDir, ".error_state.json")
 
-/**
- * Generates ISO timestamp for log entries
- * @returns {string} Current timestamp in ISO format
- */
-function timestamp() {
-    return new Date().toISOString()
-}
-
 // Define log format for console and file
 const logFormat = format.printf(info => {
     return `[${info.timestamp}] ${info.message}`
 })
+
+// Helper function to properly stringify objects and errors
+function stringifyArg(arg) {
+    if (arg instanceof Error) {
+        return arg.stack || `${arg.name}: ${arg.message}`
+    }
+    if (typeof arg === "object") {
+        try {
+            return JSON.stringify(arg, Object.getOwnPropertyNames(arg))
+        } catch (err) {
+            return `[Unstringifiable Object: ${err.message}]`
+        }
+    }
+    return String(arg)
+}
 
 // Create Winston logger with file rotation
 const winstonLogger = createLogger({
@@ -71,9 +77,7 @@ try {
 
             if (errorsOccurred) {
                 // Use winstonLogger directly since the logger object isn't created yet
-                winstonLogger.warn(
-                    `⚠️ Restored error state from previous run - errors occurred today`
-                )
+                winstonLogger.warn(`⚠️ Restored error state from previous run - errors occurred today`)
             }
         } else {
             // Clean up old state file if it's not from today
@@ -96,7 +100,7 @@ function saveErrorState() {
             lastErrorReportDate
         }
 
-        fs.writeFileSync(errorStatePath, JSON.stringify(errorState, null, 2), "utf8")
+        fs.writeFileSync(errorStatePath, JSON.stringify(errorState, null, 4), "utf8")
     } catch (err) {
         winstonLogger.error(`❌ Failed to save error state: ${err.message}`)
     }
@@ -112,7 +116,7 @@ const logger = {
      * @param {...any} args - Message and additional data to log
      */
     info: (...args) => {
-        const message = args.map(arg => (typeof arg === "object" ? JSON.stringify(arg) : arg)).join(" ")
+        const message = args.map(stringifyArg).join(" ")
         winstonLogger.info(message)
     },
 
@@ -121,7 +125,7 @@ const logger = {
      * @param {...any} args - Message and additional data to log
      */
     warn: (...args) => {
-        const message = args.map(arg => (typeof arg === "object" ? JSON.stringify(arg) : arg)).join(" ")
+        const message = args.map(stringifyArg).join(" ")
         winstonLogger.warn(message)
     },
 
@@ -130,7 +134,7 @@ const logger = {
      * @param {...any} args - Message and additional data to log
      */
     error: (...args) => {
-        const message = args.map(arg => (typeof arg === "object" ? JSON.stringify(arg) : arg)).join(" ")
+        const message = args.map(stringifyArg).join(" ")
         winstonLogger.error(message)
 
         // Set error flag and schedule report
@@ -144,8 +148,8 @@ const logger = {
      * @param {...any} args - Message and additional data to log
      */
     debug: (...args) => {
-        if (true || process.env.DEBUG === "true") {
-            const message = args.map(arg => (typeof arg === "object" ? JSON.stringify(arg) : arg)).join(" ")
+        if (process.env.DEBUG === "true") {
+            const message = args.map(stringifyArg).join(" ")
             winstonLogger.debug(message)
         }
     },

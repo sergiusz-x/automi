@@ -66,8 +66,7 @@ module.exports = sequelize => {
                     name: "idx_child_task"
                 }
             ],
-            validate: {
-            }
+            validate: {}
         }
     )
 

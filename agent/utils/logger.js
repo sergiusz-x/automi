@@ -2,12 +2,12 @@
  * Logging Utility Module
  * Provides consistent logging across the agent application
  */
-const chalk = require("chalk")
 const fs = require("fs")
 const path = require("path")
 const winston = require("winston")
 const { format, createLogger, transports } = winston
 require("winston-daily-rotate-file")
+const WebSocket = require("ws")
 
 // Ensure logs directory exists
 const logsDir = path.join(__dirname, "..", "logs")
@@ -19,6 +19,21 @@ if (!fs.existsSync(logsDir)) {
 const logFormat = format.printf(({ level, message, timestamp }) => {
     return `[${timestamp}] ${message}`
 })
+
+// Helper function to properly stringify objects and errors
+function stringifyArg(arg) {
+    if (arg instanceof Error) {
+        return arg.stack || `${arg.name}: ${arg.message}`
+    }
+    if (typeof arg === "object") {
+        try {
+            return JSON.stringify(arg, Object.getOwnPropertyNames(arg))
+        } catch (err) {
+            return `[Unstringifiable Object: ${err.message}]`
+        }
+    }
+    return String(arg)
+}
 
 // Create Winston logger with file rotation
 const winstonLogger = createLogger({
@@ -41,6 +56,27 @@ const winstonLogger = createLogger({
     ]
 })
 
+// Add socket management
+let socket = null
+function setSocket(wsSocket) {
+    socket = wsSocket
+}
+
+function sendErrorToController(level, message) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(
+            JSON.stringify({
+                type: "agent_error",
+                payload: {
+                    timestamp: new Date().toISOString(),
+                    level,
+                    error: message
+                }
+            })
+        )
+    }
+}
+
 /**
  * Logger instance with different severity levels
  * Uses Winston for file and console logging with proper formatting
@@ -51,7 +87,7 @@ const logger = {
      * @param {...any} args - Message and additional data to log
      */
     info: (...args) => {
-        const message = args.map(arg => (typeof arg === "object" ? JSON.stringify(arg) : arg)).join(" ")
+        const message = args.map(stringifyArg).join(" ")
         winstonLogger.info(message)
     },
 
@@ -60,8 +96,9 @@ const logger = {
      * @param {...any} args - Message and additional data to log
      */
     warn: (...args) => {
-        const message = args.map(arg => (typeof arg === "object" ? JSON.stringify(arg) : arg)).join(" ")
+        const message = args.map(stringifyArg).join(" ")
         winstonLogger.warn(message)
+        sendErrorToController("warn", message)
     },
 
     /**
@@ -69,8 +106,9 @@ const logger = {
      * @param {...any} args - Message and additional data to log
      */
     error: (...args) => {
-        const message = args.map(arg => (typeof arg === "object" ? JSON.stringify(arg) : arg)).join(" ")
+        const message = args.map(stringifyArg).join(" ")
         winstonLogger.error(message)
+        sendErrorToController("error", message)
     },
 
     /**
@@ -79,10 +117,12 @@ const logger = {
      */
     debug: (...args) => {
         if (process.env.DEBUG === "true") {
-            const message = args.map(arg => (typeof arg === "object" ? JSON.stringify(arg) : arg)).join(" ")
+            const message = args.map(stringifyArg).join(" ")
             winstonLogger.debug(message)
         }
-    }
+    },
+
+    setSocket
 }
 
 module.exports = logger

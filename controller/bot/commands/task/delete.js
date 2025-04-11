@@ -2,13 +2,13 @@
  * Task Delete Command
  * Handles task deletion with dependency cleanup
  */
-const { 
-    SlashCommandSubcommandBuilder, 
+const {
+    SlashCommandSubcommandBuilder,
     EmbedBuilder,
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
-    MessageFlags 
+    MessageFlags
 } = require("discord.js")
 const logger = require("../../../utils/logger")
 const db = require("../../../db")
@@ -22,16 +22,14 @@ const db = require("../../../db")
 function createConfirmationEmbed(task, dependencies) {
     const embed = new EmbedBuilder()
         .setTitle(`🗑️ Delete Task: ${task.name}`)
-        .setColor(0xff0000)
+        .setColor("#ff0000")
         .addFields([
             { name: "Type", value: task.type, inline: true },
             { name: "Agent", value: task.agentId, inline: true }
         ])
 
     if (task.schedule) {
-        embed.addFields([
-            { name: "Schedule", value: task.schedule, inline: true }
-        ])
+        embed.addFields([{ name: "Schedule", value: task.schedule, inline: true }])
     }
 
     // Add dependency warnings
@@ -53,9 +51,7 @@ function createConfirmationEmbed(task, dependencies) {
         ])
     }
 
-    const scriptPreview = task.script.length > 200 
-        ? task.script.substring(0, 200) + "..."
-        : task.script
+    const scriptPreview = task.script.length > 200 ? task.script.substring(0, 200) + "..." : task.script
 
     embed.addFields([
         {
@@ -72,10 +68,7 @@ module.exports = {
         .setName("delete")
         .setDescription("Delete a task")
         .addStringOption(opt =>
-            opt.setName("name")
-                .setDescription("Task name")
-                .setRequired(true)
-                .setAutocomplete(true)
+            opt.setName("name").setDescription("Task name").setRequired(true).setAutocomplete(true)
         ),
 
     async autocomplete(interaction) {
@@ -124,18 +117,22 @@ module.exports = {
                 // Tasks that depend on this one
                 db.TaskDependency.findAll({
                     where: { parentTaskId: task.id },
-                    include: [{
-                        model: db.Task,
-                        as: "childTask"
-                    }]
+                    include: [
+                        {
+                            model: db.Task,
+                            as: "childTask"
+                        }
+                    ]
                 }),
                 // Tasks that this one depends on
                 db.TaskDependency.findAll({
                     where: { childTaskId: task.id },
-                    include: [{
-                        model: db.Task,
-                        as: "parentTask"
-                    }]
+                    include: [
+                        {
+                            model: db.Task,
+                            as: "parentTask"
+                        }
+                    ]
                 })
             ])
 
@@ -147,14 +144,8 @@ module.exports = {
             // Show confirmation
             const embed = createConfirmationEmbed(task, dependencies)
             const buttons = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId("confirm")
-                    .setLabel("Delete")
-                    .setStyle(ButtonStyle.Danger),
-                new ButtonBuilder()
-                    .setCustomId("cancel")
-                    .setLabel("Cancel")
-                    .setStyle(ButtonStyle.Secondary)
+                new ButtonBuilder().setCustomId("confirm").setLabel("Delete").setStyle(ButtonStyle.Danger),
+                new ButtonBuilder().setCustomId("cancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary)
             )
 
             const message = await interaction.editReply({
@@ -175,10 +166,7 @@ module.exports = {
                         // Delete dependencies
                         await db.TaskDependency.destroy({
                             where: {
-                                [db.Sequelize.Op.or]: [
-                                    { parentTaskId: task.id },
-                                    { childTaskId: task.id }
-                                ]
+                                [db.Sequelize.Op.or]: [{ parentTaskId: task.id }, { childTaskId: task.id }]
                             }
                         })
 
@@ -216,14 +204,15 @@ module.exports = {
 
             collector.on("end", collected => {
                 if (collected.size === 0) {
-                    interaction.editReply({
-                        content: "⏱️ Confirmation timed out.",
-                        embeds: [],
-                        components: []
-                    }).catch(() => {})
+                    interaction
+                        .editReply({
+                            content: "⏱️ Confirmation timed out.",
+                            embeds: [],
+                            components: []
+                        })
+                        .catch(() => {})
                 }
             })
-
         } catch (err) {
             logger.error("❌ Failed to process delete command:", err)
             return interaction.editReply({

@@ -11,19 +11,18 @@ module.exports = {
         .setName("link")
         .setDescription("Link one task to run after another")
         .addStringOption(opt =>
-            opt.setName("parent")
-                .setDescription("Parent task (runs first)")
-                .setRequired(true)
-                .setAutocomplete(true)
+            opt.setName("parent").setDescription("Parent task (runs first)").setRequired(true).setAutocomplete(true)
         )
         .addStringOption(opt =>
-            opt.setName("child")
+            opt
+                .setName("child")
                 .setDescription("Child task (runs after parent)")
                 .setRequired(true)
                 .setAutocomplete(true)
         )
         .addStringOption(opt =>
-            opt.setName("condition")
+            opt
+                .setName("condition")
                 .setDescription("When the child task should run")
                 .setRequired(false)
                 .addChoices(
@@ -115,7 +114,7 @@ module.exports = {
             // Check for circular dependencies
             const dependencies = await db.TaskDependency.findAll()
             const graph = new Map()
-            
+
             for (const dep of dependencies) {
                 if (!graph.has(dep.parentTaskId)) {
                     graph.set(dep.parentTaskId, new Set())
@@ -169,20 +168,19 @@ module.exports = {
             logger.info(`✅ Created task dependency: ${parentName} → ${childName} (${condition})`)
 
             // Customize message based on condition
-            let message = `✅ Task \`${childName}\` will now run after \`${parentName}\``;
+            let message = `✅ Task \`${childName}\` will now run after \`${parentName}\``
             if (condition === "on:success") {
-                message += " completes successfully.";
+                message += " completes successfully."
             } else if (condition === "on:error") {
-                message += " fails with an error.";
+                message += " fails with an error."
             } else {
-                message += " completes (regardless of outcome).";
+                message += " completes (regardless of outcome)."
             }
 
             return interaction.editReply({
                 content: message,
                 flags: [MessageFlags.Ephemeral]
             })
-
         } catch (err) {
             logger.error("❌ Failed to create task dependency:", err)
             return interaction.editReply({
