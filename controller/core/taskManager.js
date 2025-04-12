@@ -187,73 +187,153 @@ class TaskManager {
 
             if (!agent?.wsConnection) {
                 logger.error(`❌ No WebSocket connection for agent ${task.agentId}`)
-                throw new Error("Agent offline")
+                throw new Error(`Agent ${task.agentId} offline or not connected`)
             }
 
             if (agent.wsConnection.readyState !== WebSocket.OPEN) {
                 logger.error(
                     `❌ WebSocket connection not open for agent ${task.agentId} (state: ${agent.wsConnection.readyState})`
                 )
-                throw new Error("Agent offline")
+                throw new Error(`Agent ${task.agentId} connection not open (state: ${agent.wsConnection.readyState})`)
             }
 
-            // Start transaction for status update
-            await db.sequelize.transaction(async t => {
-                run.status = TASK_STATUSES.RUNNING
-                run.startedAt = new Date()
-                await run.save({ transaction: t })
+            // Validate task data before sending to agent
+            if (!task.id || !task.name || !task.type || task.script === undefined) {
+                logger.error(`❌ Invalid task data for ${task.id || "unknown task"}: missing required properties`)
+                throw new Error(`Invalid task data: missing required properties`)
+            }
 
-                const message = {
-                    type: "EXECUTE_TASK",
-                    payload: {
-                        taskId: task.id,
-                        runId: run.id,
-                        name: task.name,
-                        type: task.type,
-                        script: task.script,
-                        // Merge base params from task with override params from options
-                        params: { ...(task.params || {}), ...(options.params || {}) },
-                        options
+            // Start transaction for status update with retry logic
+            let retries = 3
+            let success = false
+            let lastError = null
+
+            while (retries > 0 && !success) {
+                try {
+                    await db.sequelize.transaction(async t => {
+                        run.status = TASK_STATUSES.RUNNING
+                        run.startedAt = new Date()
+                        await run.save({ transaction: t })
+                    })
+                    success = true
+                } catch (err) {
+                    lastError = err
+                    retries--
+
+                    if (retries === 0) {
+                        throw err
                     }
-                }
 
-                agent.wsConnection.send(JSON.stringify(message))
+                    // Wait before retry with exponential backoff
+                    const delay = Math.pow(2, 3 - retries) * 500
+                    logger.warn(`⚠️ Database error updating task status, retrying in ${delay}ms: ${err.message}`)
+                    await new Promise(resolve => setTimeout(resolve, delay))
+                }
+            }
+
+            const message = {
+                type: "EXECUTE_TASK",
+                payload: {
+                    taskId: task.id,
+                    runId: run.id,
+                    name: task.name,
+                    type: task.type,
+                    script: task.script,
+                    // Merge base params from task with override params from options
+                    params: { ...(task.params || {}), ...(options.params || {}) },
+                    options
+                }
+            }
+
+            // Send message to agent with timeout handling
+            try {
+                const sendTimeout = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error("Send timeout")), 5000)
+                })
+
+                await Promise.race([
+                    new Promise((resolve, reject) => {
+                        try {
+                            agent.wsConnection.send(JSON.stringify(message), err => {
+                                if (err) reject(err)
+                                else resolve()
+                            })
+                        } catch (err) {
+                            reject(err)
+                        }
+                    }),
+                    sendTimeout
+                ])
+
                 this.runningTasks.set(run.id, { task, run, agent })
-            })
+                logger.info(`✅ Task ${task.name} (ID: ${task.id}) sent to agent ${task.agentId}`)
+            } catch (sendErr) {
+                logger.error(`❌ Failed to send task to agent ${task.agentId}:`, sendErr)
+                throw new Error(`Failed to send task to agent: ${sendErr.message}`)
+            }
 
             // Send initial webhook notification
-            await sendTaskResult({
-                taskId: task.id,
-                taskName: task.name,
-                agentId: task.agentId,
-                status: TASK_STATUSES.RUNNING,
-                stdout: "",
-                stderr: "",
-                exitCode: null,
-                durationMs: 0
-            })
+            try {
+                await sendTaskResult({
+                    taskId: task.id,
+                    taskName: task.name,
+                    agentId: task.agentId,
+                    status: TASK_STATUSES.RUNNING,
+                    stdout: "",
+                    stderr: "",
+                    exitCode: null,
+                    durationMs: 0
+                })
+            } catch (webhookErr) {
+                // Non-fatal error, just log it
+                logger.warn(`⚠️ Failed to send webhook notification: ${webhookErr.message}`)
+            }
 
             return true
         } catch (err) {
-            logger.error(`❌ Error executing task ${task.name}:`, err)
-            // Start transaction for error update
-            await db.sequelize.transaction(async t => {
-                run.status = TASK_STATUSES.ERROR
-                run.stderr = err.message
-                await run.save({ transaction: t })
-            })
+            logger.error(`❌ Error executing task ${task.name || task.id}:`, err)
 
-            // Send error webhook notification
-            await sendTaskResult({
-                taskId: task.id,
-                taskName: task.name,
-                agentId: task.agentId,
-                status: TASK_STATUSES.ERROR,
-                stdout: "",
-                stderr: err.message,
-                exitCode: 1,
-                durationMs: 0
-            })
+            try {
+                // Start transaction for error update with retry
+                let retries = 3
+                while (retries > 0) {
+                    try {
+                        await db.sequelize.transaction(async t => {
+                            run.status = TASK_STATUSES.ERROR
+                            run.stderr = err.toString()
+                            await run.save({ transaction: t })
+                        })
+                        break
+                    } catch (dbErr) {
+                        retries--
+                        if (retries === 0) {
+                            logger.error(`❌ Critical: Failed to update task status in database:`, dbErr)
+                        } else {
+                            // Wait before retry with exponential backoff
+                            const delay = Math.pow(2, 3 - retries) * 500
+                            await new Promise(resolve => setTimeout(resolve, delay))
+                        }
+                    }
+                }
+
+                // Send error webhook notification - don't throw if this fails
+                try {
+                    await sendTaskResult({
+                        taskId: task.id,
+                        taskName: task.name,
+                        agentId: task.agentId,
+                        status: TASK_STATUSES.ERROR,
+                        stdout: "",
+                        stderr: err.toString(),
+                        exitCode: 1,
+                        durationMs: 0
+                    })
+                } catch (webhookErr) {
+                    logger.warn(`⚠️ Failed to send error webhook notification: ${webhookErr.message}`)
+                }
+            } catch (finalErr) {
+                logger.error(`❌ Critical: Unhandled error in error handling:`, finalErr)
+            }
 
             return false
         }
@@ -307,15 +387,29 @@ class TaskManager {
      */
     async handleTaskComplete(runId, result) {
         const running = this.runningTasks.get(runId)
-        if (!running) return
+        if (!running) {
+            logger.warn(`⚠️ handleTaskComplete called for unknown run ID: ${runId}`)
+            return
+        }
 
         const { task, run } = running
         this.runningTasks.delete(runId)
 
         try {
+            if (!result) {
+                throw new Error("No result data provided")
+            }
+
+            // Input validation
+            result.stdout = result.stdout || ""
+            result.stderr = result.stderr || ""
+            result.durationMs = result.durationMs || Math.max(0, new Date() - run.startedAt)
+
             // Update run record with shorter transaction and retry logic
             let retries = 3
-            while (retries > 0) {
+            let succeeded = false
+
+            while (retries > 0 && !succeeded) {
                 try {
                     await db.sequelize.transaction(
                         {
@@ -326,37 +420,70 @@ class TaskManager {
                             run.status = result.error ? TASK_STATUSES.ERROR : TASK_STATUSES.SUCCESS
                             run.stdout = result.stdout
                             run.stderr = result.stderr
-                            run.durationMs = result.durationMs || Math.max(0, new Date() - run.startedAt)
+                            run.finishedAt = new Date()
+                            run.durationMs = result.durationMs
                             await run.save({ transaction: t })
-
-                            // Get and queue downstream tasks
-                            const downstreamTasks = await this.getDownstreamTasks(task.id, run.status)
-                            for (const downTask of downstreamTasks) {
-                                await this.queueTask(downTask)
-                            }
                         }
                     )
-                    break // If successful, exit retry loop
+                    succeeded = true
                 } catch (err) {
                     retries--
-                    if (retries === 0) throw err
+                    if (retries === 0) {
+                        logger.error(`❌ Failed to update task ${task.name} completion after 3 retries:`, err)
+                        throw err
+                    }
                     // Wait before retry (exponential backoff)
-                    await new Promise(resolve => setTimeout(resolve, (3 - retries) * 1000))
+                    const delay = Math.pow(2, 3 - retries) * 1000
+                    logger.warn(`⚠️ Database error updating task status, retrying in ${delay}ms: ${err.message}`)
+                    await new Promise(resolve => setTimeout(resolve, delay))
                 }
+            }
+
+            // Get downstream tasks - separate from the transaction for better isolation
+            try {
+                const downstreamTasks = await this.getDownstreamTasks(task.id, run.status)
+
+                // Queue downstream tasks
+                for (const downTask of downstreamTasks) {
+                    logger.info(`🔄 Queuing downstream task ${downTask.name} (ID: ${downTask.id})`)
+                    await this.queueTask(downTask)
+                }
+            } catch (depErr) {
+                logger.error(`❌ Error processing downstream tasks for ${task.name}:`, depErr)
+                // Don't throw - this shouldn't prevent checking the queue
             }
 
             // Check queued tasks outside transaction
-            for (const [taskId, queued] of this.taskQueue.entries()) {
-                const canRun = await this.checkDependencies(taskId)
-                if (canRun) {
-                    this.taskQueue.delete(taskId)
-                    await this.executeTask(queued.task, queued.run, queued.options)
+            try {
+                for (const [taskId, queued] of this.taskQueue.entries()) {
+                    const canRun = await this.checkDependencies(taskId)
+                    if (canRun) {
+                        logger.info(`⏩ Executing queued task ${queued.task.name} (ID: ${taskId})`)
+                        this.taskQueue.delete(taskId)
+                        await this.executeTask(queued.task, queued.run, queued.options)
+                    }
                 }
+            } catch (queueErr) {
+                logger.error(`❌ Error processing task queue after task completion:`, queueErr)
+                // Non-fatal error, don't rethrow
             }
 
-            logger.info(`✅ Task ${task.name} completed with status: ${run.status}`)
+            logger.info(`✅ Task ${task.name} (ID: ${task.id}) completed with status: ${run.status}`)
         } catch (err) {
-            logger.error(`❌ Error handling task completion for ${task.name}:`, err)
+            logger.error(`❌ Error handling task completion for ${task.name} (ID: ${task.id}):`, err)
+
+            // Last-resort error handling - make sure the task is marked as failed
+            try {
+                // Only update if not already updated in a transaction
+                if (run.status === TASK_STATUSES.RUNNING) {
+                    run.status = TASK_STATUSES.ERROR
+                    run.stderr = (run.stderr || "") + "\n" + `Error during completion handling: ${err.message}`
+                    run.finishedAt = new Date()
+                    await run.save()
+                }
+            } catch (finalErr) {
+                logger.error(`❌ Critical: Failed to update task status after error:`, finalErr)
+            }
         }
     }
 

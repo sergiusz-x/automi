@@ -20,36 +20,90 @@ async function startController() {
     logger.info("🚀 Starting Automi Controller...")
 
     try {
-        // Initialize database connection
+        // Initialize database connection with retries
         logger.info("📊 Connecting to database...")
-        await db.sequelize.authenticate()
+        const dbConnected = await db.connect(5, 5000) // 5 retries, starting with 5 second delay
+
+        if (!dbConnected) {
+            throw new Error("Failed to connect to database after multiple attempts")
+        }
+
         logger.info("✅ Database connection established")
 
-        // Synchronize database models with force to ensure tables exist
-        logger.info("🔄 Synchronizing database models...")
-        await db.sequelize.sync({ alter: true })
-        logger.info("✅ Database tables synchronized")
+        // Synchronize database models with retry logic
+        try {
+            logger.info("🔄 Synchronizing database models...")
+            let syncRetries = 3
+            let syncError = null
+
+            while (syncRetries > 0) {
+                try {
+                    await db.sequelize.sync({ alter: true })
+                    logger.info("✅ Database tables synchronized")
+                    syncError = null
+                    break
+                } catch (err) {
+                    syncRetries--
+                    syncError = err
+
+                    if (syncRetries === 0) {
+                        throw err
+                    }
+
+                    logger.warn(`⚠️ Database sync failed, retrying... (${syncRetries} attempts left): ${err.message}`)
+                    await new Promise(resolve => setTimeout(resolve, 3000))
+                }
+            }
+
+            if (syncError) {
+                throw syncError
+            }
+        } catch (syncErr) {
+            logger.error("❌ Failed to synchronize database models:", syncErr)
+            throw syncErr
+        }
 
         // Initialize task manager
         logger.info("🔄 Initializing task manager...")
-        const taskManager = require("./core/taskManager")
-        await taskManager.initialize()
-        logger.info("✅ Task manager initialized")
+        try {
+            const taskManager = require("./core/taskManager")
+            await taskManager.initialize()
+            logger.info("✅ Task manager initialized")
+        } catch (taskErr) {
+            logger.error("❌ Failed to initialize task manager:", taskErr)
+            throw taskErr
+        }
 
         // Start WebSocket server for agent connections
         logger.info("🌐 Initializing WebSocket server...")
-        await startWebSocketServer()
-        logger.info("✅ WebSocket server started")
+        try {
+            await startWebSocketServer()
+            logger.info("✅ WebSocket server started")
+        } catch (wsErr) {
+            logger.error("❌ Failed to start WebSocket server:", wsErr)
+            throw wsErr
+        }
 
         // Initialize Discord bot
         logger.info("🤖 Starting Discord bot...")
-        await startDiscordBot()
-        logger.info("✅ Discord bot initialized")
+        try {
+            await startDiscordBot()
+            logger.info("✅ Discord bot initialized")
+        } catch (botErr) {
+            logger.error("❌ Failed to initialize Discord bot:", botErr)
+            // Non-fatal error, continue startup
+            logger.warn("⚠️ Continuing without Discord bot")
+        }
 
         // Start task scheduler
         logger.info("⏰ Initializing task scheduler...")
-        await startScheduler()
-        logger.info("✅ Task scheduler started")
+        try {
+            await startScheduler()
+            logger.info("✅ Task scheduler started")
+        } catch (schedErr) {
+            logger.error("❌ Failed to start task scheduler:", schedErr)
+            throw schedErr
+        }
 
         logger.info("🎉 Automi Controller is up and running")
 
@@ -65,8 +119,8 @@ async function startController() {
 /**
  * Gracefully shut down all components
  */
-async function gracefulShutdown() {
-    logger.info("🛑 Shutting down Automi Controller...")
+async function gracefulShutdown(signal = "SIGTERM") {
+    logger.info(`🛑 Shutting down Automi Controller (signal: ${signal})...`)
 
     try {
         // 1. Set the global shutdown flag to prevent DB operations during shutdown
@@ -74,8 +128,13 @@ async function gracefulShutdown() {
 
         // 2. Stop task scheduler
         logger.info("⏰ Stopping task scheduler...")
-        startScheduler.stopAllJobs()
-        logger.info("✅ Task scheduler stopped")
+        try {
+            startScheduler.stopAllJobs()
+            logger.info("✅ Task scheduler stopped")
+        } catch (schedErr) {
+            logger.error("❌ Error stopping task scheduler:", schedErr)
+            // Continue shutdown despite errors
+        }
 
         // 3. Update all agent statuses in database to offline in one batch operation
         logger.info("📊 Updating agent statuses in database...")
@@ -87,28 +146,44 @@ async function gracefulShutdown() {
             }
         } catch (dbErr) {
             logger.error("❌ Failed to update agent statuses:", dbErr.message)
+            // Continue shutdown despite errors
         }
 
         // 4. Disconnect agents - notify them but don't update DB
         logger.info("🔌 Disconnecting agents...")
-        const agents = require("./core/agents")
-        agents.disconnectAll(true) // true = silent mode, avoid DB updates
-        logger.info("✅ Agents notified about disconnection")
+        try {
+            const agents = require("./core/agents")
+            agents.disconnectAll(true) // true = silent mode, avoid DB updates
+            logger.info("✅ Agents notified about disconnection")
+        } catch (agentErr) {
+            logger.error("❌ Error disconnecting agents:", agentErr)
+            // Continue shutdown despite errors
+        }
 
         // 5. Close WebSocket server
         logger.info("🌐 Stopping WebSocket server...")
-        await require("./core/ws").shutdown()
-        logger.info("✅ WebSocket server stopped")
+        try {
+            await require("./core/ws").shutdown()
+            logger.info("✅ WebSocket server stopped")
+        } catch (wsErr) {
+            logger.error("❌ Error stopping WebSocket server:", wsErr)
+            // Continue shutdown despite errors
+        }
 
         // 6. Close database connection
         logger.info("📊 Closing database connection...")
-        await db.sequelize.close()
-        logger.info("✅ Database connection closed")
+        try {
+            await db.sequelize.close()
+            logger.info("✅ Database connection closed")
+        } catch (dbErr) {
+            logger.error("❌ Error closing database connection:", dbErr)
+            // Continue shutdown despite errors
+        }
 
         logger.info("👋 Shutdown complete")
         process.exit(0)
     } catch (err) {
-        logger.error("❌ Error during shutdown:", err)
+        logger.error("❌ Critical error during shutdown:", err)
         process.exit(1)
     }
 }

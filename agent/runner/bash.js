@@ -6,6 +6,7 @@ const { spawn } = require("child_process")
 const logger = require("../utils/logger")
 const os = require("os")
 const path = require("path")
+const fs = require("fs").promises
 
 /**
  * Convert parameters to environment variables
@@ -14,10 +15,28 @@ const path = require("path")
  */
 function generateEnvironment(params) {
     const env = { ...process.env }
+
+    // Validate input
+    if (!params || typeof params !== "object") {
+        logger.warn("⚠️ Invalid params provided to generateEnvironment, using empty params")
+        return env
+    }
+
     try {
         Object.entries(params).forEach(([key, value]) => {
+            // Validate key
+            if (!key || typeof key !== "string") {
+                logger.warn(`⚠️ Invalid parameter key: ${key}, skipping`)
+                return
+            }
+
             // Convert all values to strings since env vars must be strings
-            env[`PARAM_${key.toUpperCase()}`] = typeof value === "object" ? JSON.stringify(value) : String(value)
+            try {
+                env[`PARAM_${key.toUpperCase()}`] = typeof value === "object" ? JSON.stringify(value) : String(value)
+            } catch (valueErr) {
+                logger.warn(`⚠️ Could not convert value for key ${key} to string, using empty string`, valueErr)
+                env[`PARAM_${key.toUpperCase()}`] = ""
+            }
         })
         logger.debug(
             "🔄 Generated environment variables:",
@@ -37,15 +56,17 @@ async function findGitBash() {
     const commonPaths = [
         "C:\\Program Files\\Git\\bin\\bash.exe",
         "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
-        path.join(process.env.ProgramFiles, "Git", "bin", "bash.exe"),
-        path.join(process.env["ProgramFiles(x86)"], "Git", "bin", "bash.exe")
+        path.join(process.env.ProgramFiles || "", "Git", "bin", "bash.exe"),
+        path.join(process.env["ProgramFiles(x86)"] || "", "Git", "bin", "bash.exe")
     ]
 
-    for (const path of commonPaths) {
+    // Check for file existence using fs.promises for better error handling
+    for (const bashPath of commonPaths) {
         try {
-            require("fs").accessSync(path)
-            return path
+            await fs.access(bashPath)
+            return bashPath
         } catch (err) {
+            // Path doesn't exist, try next one
             continue
         }
     }
@@ -53,14 +74,21 @@ async function findGitBash() {
     // Try to find git in PATH
     try {
         const { execSync } = require("child_process")
-        const gitPath = execSync("where git").toString().trim().split("\n")[0]
+        const gitPath = execSync("where git", { timeout: 5000 }).toString().trim().split("\n")[0]
         if (gitPath) {
-            return path.join(path.dirname(path.dirname(gitPath)), "bin", "bash.exe")
+            const bashPath = path.join(path.dirname(path.dirname(gitPath)), "bin", "bash.exe")
+            try {
+                await fs.access(bashPath)
+                return bashPath
+            } catch (accessErr) {
+                logger.debug(`Found git at ${gitPath} but could not access bash at ${bashPath}`)
+            }
         }
     } catch (err) {
-        // Ignore errors
+        logger.debug("Could not find Git in PATH:", err.message)
     }
 
+    logger.warn("⚠️ Could not find Git Bash, falling back to cmd.exe")
     return null
 }
 
@@ -71,7 +99,19 @@ async function findGitBash() {
  * @returns {Promise<Object>} Process handle and result promise
  */
 async function createProcess(script, params = {}) {
+    // Validate script input
+    if (!script || typeof script !== "string") {
+        return Promise.resolve({
+            success: false,
+            code: 1,
+            stdout: "",
+            stderr: "Invalid script provided: must be a non-empty string"
+        })
+    }
+
     return new Promise(async resolve => {
+        let proc = null
+
         try {
             // Set up environment with parameters
             const env = generateEnvironment(params)
@@ -80,13 +120,20 @@ async function createProcess(script, params = {}) {
             let shell,
                 shellArgs,
                 useShell = true
+
             if (os.platform() === "win32") {
-                const gitBash = await findGitBash()
-                if (gitBash) {
-                    shell = gitBash
-                    shellArgs = ["--login", "-c", script]
-                    useShell = false // Don't use shell when using Git Bash directly
-                } else {
+                try {
+                    const gitBash = await findGitBash()
+                    if (gitBash) {
+                        shell = gitBash
+                        shellArgs = ["--login", "-c", script]
+                        useShell = false // Don't use shell when using Git Bash directly
+                    } else {
+                        shell = "cmd.exe"
+                        shellArgs = ["/c", script]
+                    }
+                } catch (shellErr) {
+                    logger.error("❌ Error determining shell:", shellErr)
                     shell = "cmd.exe"
                     shellArgs = ["/c", script]
                 }
@@ -98,12 +145,22 @@ async function createProcess(script, params = {}) {
             logger.info(`🐚 Using shell: ${shell}`)
 
             // Set up shell process
-            const proc = spawn(shell, shellArgs, {
-                env,
-                shell: useShell,
-                timeout: 300000, // 5-minute timeout
-                killSignal: "SIGTERM"
-            })
+            try {
+                proc = spawn(shell, shellArgs, {
+                    env,
+                    shell: useShell,
+                    timeout: 300000, // 5-minute timeout
+                    killSignal: "SIGTERM"
+                })
+            } catch (spawnErr) {
+                logger.error("❌ Failed to spawn process:", spawnErr)
+                return resolve({
+                    success: false,
+                    code: 1,
+                    stdout: "",
+                    stderr: `Failed to spawn process: ${spawnErr.message}`
+                })
+            }
 
             let stdout = ""
             let stderr = ""
@@ -112,17 +169,25 @@ async function createProcess(script, params = {}) {
 
             // Handle standard output
             proc.stdout.on("data", data => {
-                const output = data.toString()
-                stdout += output
-                logger.debug("📤 Shell stdout:", output.trim())
+                try {
+                    const output = data.toString()
+                    stdout += output
+                    logger.debug("📤 Shell stdout:", output.trim())
+                } catch (stdoutErr) {
+                    logger.warn("⚠️ Error processing stdout data:", stdoutErr)
+                }
             })
 
             // Handle error output
             proc.stderr.on("data", data => {
-                const error = data.toString()
-                stderr += error
-                hasError = true
-                logger.warn("⚠️ Shell stderr:", error.trim())
+                try {
+                    const error = data.toString()
+                    stderr += error
+                    hasError = true
+                    logger.warn("⚠️ Shell stderr:", error.trim())
+                } catch (stderrErr) {
+                    logger.warn("⚠️ Error processing stderr data:", stderrErr)
+                }
             })
 
             // Handle process completion
@@ -136,7 +201,7 @@ async function createProcess(script, params = {}) {
 
                 resolve({
                     success,
-                    code,
+                    code: code !== null ? code : 1, // Ensure we don't pass null codes
                     stdout: stdout.trim(),
                     stderr: stderr.trim()
                 })
@@ -144,12 +209,12 @@ async function createProcess(script, params = {}) {
 
             // Handle process errors
             proc.on("error", err => {
-                logger.error("❌ Failed to start process:", err)
+                logger.error("❌ Failed to start or run process:", err)
                 resolve({
                     success: false,
                     code: 1,
-                    stdout: "",
-                    stderr: err.message
+                    stdout: stdout.trim(),
+                    stderr: `${stderr.trim()}\nProcess error: ${err.message}`
                 })
             })
 
@@ -157,19 +222,39 @@ async function createProcess(script, params = {}) {
             proc.on("timeout", () => {
                 logger.error("⏱️ Script execution timed out")
                 killed = true
-                proc.kill("SIGTERM")
+                try {
+                    proc.kill("SIGTERM")
+                } catch (killErr) {
+                    logger.error("❌ Error killing process after timeout:", killErr)
+                }
                 resolve({
                     success: false,
                     code: 124,
                     stdout: stdout.trim(),
-                    stderr: "Process timed out after 5 minutes"
+                    stderr: `${stderr.trim()}\nProcess timed out after 5 minutes`
                 })
             })
 
+            // Set process exit handler to catch unexpected exits
+            process.once("exit", () => {
+                if (proc && !proc.killed) {
+                    try {
+                        proc.kill("SIGTERM")
+                    } catch (e) {
+                        // Ignore errors during shutdown
+                    }
+                }
+            })
+
             // Enhance kill method for clean termination
-            proc.kill = () => {
+            proc.kill = (signal = "SIGTERM") => {
                 killed = true
-                proc.kill("SIGTERM")
+                try {
+                    return process.kill(proc.pid, signal)
+                } catch (killErr) {
+                    logger.error(`❌ Error killing process with signal ${signal}:`, killErr)
+                    return false
+                }
             }
         } catch (err) {
             logger.error("❌ Critical error in script execution:", err)
@@ -177,7 +262,7 @@ async function createProcess(script, params = {}) {
                 success: false,
                 code: 1,
                 stdout: "",
-                stderr: err.message
+                stderr: `Critical error in script execution: ${err.toString()}`
             })
         }
     })
@@ -190,7 +275,17 @@ async function createProcess(script, params = {}) {
  * @returns {Promise<Object>} Execution results
  */
 async function run(script, params = {}) {
-    return createProcess(script, params)
+    try {
+        return await createProcess(script, params)
+    } catch (err) {
+        logger.error("❌ Unhandled exception in bash runner:", err)
+        return {
+            success: false,
+            code: 1,
+            stdout: "",
+            stderr: `Unhandled exception in bash runner: ${err.toString()}`
+        }
+    }
 }
 
 module.exports = { run, createProcess }

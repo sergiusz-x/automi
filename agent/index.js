@@ -76,11 +76,35 @@ function connect() {
     // Handle incoming messages
     socket.on("message", async data => {
         try {
+            // Add validation for the message data before parsing
+            if (!data || data.length === 0) {
+                logger.warn("⚠️ Received empty message from controller, ignoring")
+                return
+            }
+
             const message = JSON.parse(data)
+
+            // Validate message structure
+            if (!message || !message.type) {
+                logger.warn(
+                    "⚠️ Received invalid message format from controller:",
+                    typeof message === "object" ? JSON.stringify(message) : message
+                )
+                return
+            }
 
             switch (message.type) {
                 case "EXECUTE_TASK": {
-                    const { taskId, runId, name, type, script, params } = message.payload
+                    // Validate required task properties
+                    const { taskId, runId, name, type, script, params } = message.payload || {}
+
+                    if (!taskId || !name || !type || script === undefined) {
+                        logger.error(
+                            `❌ Invalid task data received: missing required properties`,
+                            JSON.stringify(message.payload)
+                        )
+                        return
+                    }
 
                     // Register task run
                     registerTaskRun(taskId, {
@@ -125,7 +149,8 @@ function connect() {
                             success: false,
                             code: 1,
                             stdout: "",
-                            stderr: err.message
+                            stderr: err.message, // TODO - sprawdzić czy err.toString() nie jest lepsze
+                            duration: 0
                         })
                         clearTaskMeta(taskId)
                     }
@@ -133,29 +158,64 @@ function connect() {
                 }
 
                 case "CANCEL_TASK": {
-                    const { taskId } = message.payload
+                    // Validate required properties
+                    const { taskId } = message.payload || {}
+                    if (!taskId) {
+                        logger.warn("⚠️ Invalid CANCEL_TASK message: missing taskId")
+                        return
+                    }
+
                     logger.info(`🛑 Processing CANCEL_TASK message for task ${taskId}`)
 
                     const running = runningTasks.get(taskId)
                     if (running?.process) {
                         logger.info(`🛑 Killing process for task ${taskId}`)
-                        running.process.kill()
-                        runningTasks.delete(taskId)
-                        clearTaskMeta(taskId)
+                        try {
+                            running.process.kill()
+                            runningTasks.delete(taskId)
+                            clearTaskMeta(taskId)
 
-                        sendTaskResult(running.task, {
-                            success: false,
-                            code: 143,
-                            stdout: "",
-                            stderr: "Task cancelled by user",
-                            duration: Date.now() - running.startTime
-                        })
+                            sendTaskResult(running.task, {
+                                success: false,
+                                code: 143,
+                                stdout: "",
+                                stderr: "Task cancelled by user",
+                                duration: Date.now() - running.startTime
+                            })
+                        } catch (killErr) {
+                            logger.error(`❌ Error killing task ${taskId}:`, killErr)
+                            // Still try to clean up even if kill failed
+                            runningTasks.delete(taskId)
+                            clearTaskMeta(taskId)
+                        }
+                    } else {
+                        logger.info(`⚠️ Task ${taskId} not found or already completed`)
                     }
                     break
                 }
+
+                default:
+                    logger.warn(`⚠️ Unknown message type: ${message.type}`)
+                    break
             }
         } catch (err) {
             logger.error("❌ Error processing message:", err)
+            // Send error notification to controller
+            try {
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send(
+                        JSON.stringify({
+                            type: "agent_error",
+                            payload: {
+                                error: err.toString(),
+                                timestamp: new Date().toISOString()
+                            }
+                        })
+                    )
+                }
+            } catch (sendErr) {
+                logger.error("❌ Failed to send error notification:", sendErr)
+            }
         }
     })
 
@@ -226,58 +286,39 @@ function sendTaskResult(task, result) {
     }
 }
 
+/**
+ * Handles agent shutdown process
+ * @param {string} signal - The signal that triggered the shutdown (SIGTERM, SIGINT, etc.)
+ */
+function handleShutdown(signal) {
+    logger.info(`🛑 Received ${signal} - shutting down...`)
+
+    // Kill any running tasks
+    for (const [taskId, { process, task, startTime }] of runningTasks.entries()) {
+        try {
+            process.kill()
+            sendTaskResult(task, {
+                success: false,
+                code: 143,
+                stdout: "",
+                stderr: "Task cancelled due to agent shutdown",
+                duration: Date.now() - startTime
+            })
+        } catch (err) {
+            logger.error(`❌ Error killing task ${taskId}:`, err)
+        }
+    }
+    runningTasks.clear()
+
+    if (socket) {
+        socket.close(1000, "Agent shutting down")
+    }
+    process.exit(0)
+}
+
 // Handle process termination
-process.on("SIGTERM", () => {
-    logger.info("🛑 Received SIGTERM - shutting down...")
-
-    // Kill any running tasks
-    for (const [taskId, { process, task, startTime }] of runningTasks.entries()) {
-        try {
-            process.kill()
-            sendTaskResult(task, {
-                success: false,
-                code: 143,
-                stdout: "",
-                stderr: "Task cancelled due to agent shutdown",
-                duration: Date.now() - startTime
-            })
-        } catch (err) {
-            logger.error(`❌ Error killing task ${taskId}:`, err)
-        }
-    }
-    runningTasks.clear()
-
-    if (socket) {
-        socket.close(1000, "Agent shutting down")
-    }
-    process.exit(0)
-})
-
-process.on("SIGINT", () => {
-    logger.info("🛑 Received SIGINT - shutting down...")
-
-    // Kill any running tasks
-    for (const [taskId, { process, task, startTime }] of runningTasks.entries()) {
-        try {
-            process.kill()
-            sendTaskResult(task, {
-                success: false,
-                code: 143,
-                stdout: "",
-                stderr: "Task cancelled due to agent shutdown",
-                duration: Date.now() - startTime
-            })
-        } catch (err) {
-            logger.error(`❌ Error killing task ${taskId}:`, err)
-        }
-    }
-    runningTasks.clear()
-
-    if (socket) {
-        socket.close(1000, "Agent shutting down")
-    }
-    process.exit(0)
-})
+process.on("SIGTERM", () => handleShutdown("SIGTERM"))
+process.on("SIGINT", () => handleShutdown("SIGINT"))
 
 // Start connection
 connect()
