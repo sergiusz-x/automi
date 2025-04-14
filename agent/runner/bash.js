@@ -11,9 +11,10 @@ const fs = require("fs").promises
 /**
  * Convert parameters to environment variables
  * @param {Object} params Parameters to inject
+ * @param {Object} assets Global assets to inject
  * @returns {Object} Environment variables object
  */
-function generateEnvironment(params) {
+function generateEnvironment(params, assets = {}) {
     const env = { ...process.env }
 
     // Validate input
@@ -23,6 +24,7 @@ function generateEnvironment(params) {
     }
 
     try {
+        // Process regular parameters
         Object.entries(params).forEach(([key, value]) => {
             // Validate key
             if (!key || typeof key !== "string") {
@@ -38,8 +40,30 @@ function generateEnvironment(params) {
                 env[`PARAM_${key.toUpperCase()}`] = ""
             }
         })
+
+        // Process global assets
+        if (assets && typeof assets === "object") {
+            Object.entries(assets).forEach(([key, value]) => {
+                if (!key || typeof key !== "string") {
+                    logger.warn(`⚠️ Invalid asset key: ${key}, skipping`)
+                    return
+                }
+
+                try {
+                    env[`ASSET_${key.toUpperCase()}`] = String(value)
+                } catch (valueErr) {
+                    logger.warn(`⚠️ Could not convert asset ${key} to string, using empty string`, valueErr)
+                    env[`ASSET_${key.toUpperCase()}`] = ""
+                }
+            })
+            logger.debug(
+                "🔑 Generated asset environment variables:",
+                Object.keys(assets).map(k => `ASSET_${k.toUpperCase()}`)
+            )
+        }
+
         logger.debug(
-            "🔄 Generated environment variables:",
+            "🔄 Generated parameter environment variables:",
             Object.keys(params).map(k => `PARAM_${k.toUpperCase()}`)
         )
     } catch (err) {
@@ -96,9 +120,10 @@ async function findGitBash() {
  * Create a shell process to execute a script
  * @param {string} script Shell script to execute
  * @param {Object} params Parameters to inject as environment variables
+ * @param {Object} assets Global assets to inject as environment variables
  * @returns {Promise<Object>} Process handle and result promise
  */
-async function createProcess(script, params = {}) {
+async function createProcess(script, params = {}, assets = {}) {
     // Validate script input
     if (!script || typeof script !== "string") {
         return Promise.resolve({
@@ -113,8 +138,8 @@ async function createProcess(script, params = {}) {
         let proc = null
 
         try {
-            // Set up environment with parameters
-            const env = generateEnvironment(params)
+            // Set up environment with parameters and assets
+            const env = generateEnvironment(params, assets)
 
             // Determine which shell to use based on OS
             let shell,
@@ -272,11 +297,12 @@ async function createProcess(script, params = {}) {
  * Execute a shell script with parameters
  * @param {string} script Shell script to execute
  * @param {Object} params Parameters to inject as environment variables
+ * @param {Object} assets Global assets to inject as environment variables
  * @returns {Promise<Object>} Execution results
  */
-async function run(script, params = {}) {
+async function run(script, params = {}, assets = {}) {
     try {
-        return await createProcess(script, params)
+        return await createProcess(script, params, assets)
     } catch (err) {
         logger.error("❌ Unhandled exception in bash runner:", err)
         return {

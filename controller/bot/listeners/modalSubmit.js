@@ -284,6 +284,171 @@ async function handleAgentIpEdit(interaction, modalId) {
 }
 
 /**
+ * Handle asset add modal submission
+ * @param {ModalSubmitInteraction} interaction Modal submission interaction
+ * @returns {Promise<void>}
+ */
+async function handleAssetAdd(interaction) {
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] })
+
+    try {
+        // Get asset data from modal
+        const key = interaction.fields.getTextInputValue("key")
+        const value = interaction.fields.getTextInputValue("value")
+        const description = interaction.fields.getTextInputValue("description") || null
+
+        // Validate key (should be non-empty)
+        if (!key || !key.trim()) {
+            return interaction.editReply({
+                content: "❌ Asset key cannot be empty.",
+                flags: [MessageFlags.Ephemeral]
+            })
+        }
+
+        // Check if asset with this key already exists
+        const existingAsset = await db.Asset.findOne({ where: { key } })
+        if (existingAsset) {
+            return interaction.editReply({
+                content: `❌ Asset with key \`${key}\` already exists.`,
+                flags: [MessageFlags.Ephemeral]
+            })
+        }
+
+        // Create new asset
+        const asset = await db.Asset.create({
+            key,
+            value,
+            description
+        })
+
+        logger.info(`✅ Created new asset: ${key}`)
+
+        // Create embed for asset details
+        const embed = new EmbedBuilder()
+            .setTitle("✅ Asset Created")
+            .setColor("#2ecc71")
+            .setDescription(`The asset **${key}** has been created successfully.`)
+            .addFields([
+                {
+                    name: "Key",
+                    value: `\`${key}\``,
+                    inline: true
+                },
+                {
+                    name: "Value",
+                    value: `\`${value}\``,
+                    inline: true
+                }
+            ])
+
+        if (description) {
+            embed.addFields({
+                name: "Description",
+                value: description,
+                inline: false
+            })
+        }
+
+        return interaction.editReply({
+            embeds: [embed],
+            flags: [MessageFlags.Ephemeral]
+        })
+    } catch (err) {
+        logger.error("❌ Error creating asset:", err)
+        return interaction.editReply({
+            content: "❌ Failed to create asset.",
+            flags: [MessageFlags.Ephemeral]
+        })
+    }
+}
+
+/**
+ * Handle asset edit modal submission
+ * @param {ModalSubmitInteraction} interaction Modal submission interaction
+ * @param {string} assetKey Key of the asset being edited
+ * @returns {Promise<void>}
+ */
+async function handleAssetEdit(interaction, assetKey) {
+    await interaction.deferReply({ flags: [MessageFlags.Ephemeral] })
+
+    try {
+        // Get asset data from modal
+        const value = interaction.fields.getTextInputValue("value")
+        const description = interaction.fields.getTextInputValue("description") || null
+
+        // Find asset
+        const asset = await db.Asset.findOne({ where: { key: assetKey } })
+        if (!asset) {
+            return interaction.editReply({
+                content: `❌ Asset with key \`${assetKey}\` not found.`,
+                flags: [MessageFlags.Ephemeral]
+            })
+        }
+
+        // Track old values for comparison
+        const oldValue = asset.value
+        const oldDescription = asset.description
+
+        // Update asset
+        await asset.update({
+            value,
+            description
+        })
+
+        logger.info(`✅ Updated asset: ${assetKey}`)
+
+        // Create embed for asset details
+        const embed = new EmbedBuilder()
+            .setTitle("✅ Asset Updated")
+            .setColor("#3498db")
+            .setDescription(`The asset **${assetKey}** has been updated successfully.`)
+            .addFields([
+                {
+                    name: "Key",
+                    value: `\`${assetKey}\``,
+                    inline: false
+                },
+                {
+                    name: "Previous Value",
+                    value: `\`${oldValue}\``,
+                    inline: true
+                },
+                {
+                    name: "New Value",
+                    value: `\`${value}\``,
+                    inline: true
+                }
+            ])
+
+        if (oldDescription !== description) {
+            embed.addFields([
+                {
+                    name: "Previous Description",
+                    value: oldDescription || "*No description*",
+                    inline: true
+                },
+                {
+                    name: "New Description",
+                    value: description || "*No description*",
+                    inline: true
+                }
+            ])
+        }
+
+        return interaction.editReply({
+            embeds: [embed],
+            flags: [MessageFlags.Ephemeral]
+        })
+    } catch (err) {
+        logger.error(`❌ Error updating asset ${assetKey}:`, err)
+        return interaction.editReply({
+            content: "❌ Failed to update asset.",
+            flags: [MessageFlags.Ephemeral]
+        })
+    }
+}
+
+/**
  * Process modal submissions
  * @param {ModalSubmitInteraction} interaction Modal submission interaction
  */
@@ -306,6 +471,19 @@ async function handleModalSubmit(interaction) {
     // Handle agent IP edit modal
     if (modalId.startsWith("edit-agent-ip")) {
         await handleAgentIpEdit(interaction, modalId)
+        return
+    }
+
+    // Handle asset add modal
+    if (modalId.startsWith("add-asset")) {
+        await handleAssetAdd(interaction)
+        return
+    }
+
+    // Handle asset edit modal
+    if (modalId.startsWith("edit-asset-modal-")) {
+        const assetKey = modalId.replace("edit-asset-modal-", "")
+        await handleAssetEdit(interaction, assetKey)
         return
     }
 

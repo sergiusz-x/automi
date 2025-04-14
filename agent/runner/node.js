@@ -11,19 +11,42 @@ const logger = require("../utils/logger")
 /**
  * Convert parameters to environment variables
  * @param {Object} params Parameters to inject
+ * @param {Object} assets Global assets to inject
  * @returns {Object} Environment variables object
  */
-function generateEnvironment(params) {
+function generateEnvironment(params, assets = {}) {
     const env = { ...process.env }
     try {
+        // Process regular parameters
         Object.entries(params).forEach(([key, value]) => {
             // Convert all values to strings since env vars must be strings
             env[`PARAM_${key.toUpperCase()}`] = typeof value === "object" ? JSON.stringify(value) : String(value)
         })
         logger.debug(
-            "🔄 Generated environment variables:",
+            "🔄 Generated parameter environment variables:",
             Object.keys(params).map(k => `PARAM_${k.toUpperCase()}`)
         )
+
+        // Process global assets
+        if (assets && typeof assets === "object") {
+            Object.entries(assets).forEach(([key, value]) => {
+                if (!key || typeof key !== "string") {
+                    logger.warn(`⚠️ Invalid asset key: ${key}, skipping`)
+                    return
+                }
+
+                try {
+                    env[`ASSET_${key.toUpperCase()}`] = String(value)
+                } catch (valueErr) {
+                    logger.warn(`⚠️ Could not convert asset ${key} to string, using empty string`, valueErr)
+                    env[`ASSET_${key.toUpperCase()}`] = ""
+                }
+            })
+            logger.debug(
+                "🔑 Generated asset environment variables:",
+                Object.keys(assets).map(k => `ASSET_${k.toUpperCase()}`)
+            )
+        }
     } catch (err) {
         logger.error("❌ Failed to convert parameters to env vars:", err)
     }
@@ -34,17 +57,18 @@ function generateEnvironment(params) {
  * Create a Node.js process to execute a script
  * @param {string} script Node.js code to execute
  * @param {Object} params Parameters to inject as environment variables
+ * @param {Object} assets Global assets to inject as environment variables
  * @returns {Promise<Object>} Process handle and result promise
  */
-async function createProcess(script, params = {}) {
+async function createProcess(script, params = {}, assets = {}) {
     return new Promise(async resolve => {
         try {
             // Create temporary script file
             const tmpDir = os.tmpdir()
             const tmpFile = path.join(tmpDir, `script-${Date.now()}.js`)
 
-            // Set up environment with parameters
-            const env = generateEnvironment(params)
+            // Set up environment with parameters and assets
+            const env = generateEnvironment(params, assets)
 
             // Write script directly to temp file without additional wrapping
             await fs.writeFile(tmpFile, script, "utf8")
@@ -161,10 +185,11 @@ async function createProcess(script, params = {}) {
  * Execute a Node.js script with parameters
  * @param {string} script Node.js code to execute
  * @param {Object} params Parameters to inject as environment variables
+ * @param {Object} assets Global assets to inject as environment variables
  * @returns {Promise<Object>} Execution results
  */
-async function run(script, params = {}) {
-    return createProcess(script, params)
+async function run(script, params = {}, assets = {}) {
+    return createProcess(script, params, assets)
 }
 
 module.exports = { run, createProcess }

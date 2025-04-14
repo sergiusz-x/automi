@@ -203,6 +203,20 @@ class TaskManager {
                 throw new Error(`Invalid task data: missing required properties`)
             }
 
+            // Fetch all global assets
+            let assets = {}
+            try {
+                const assetRecords = await db.Asset.findAll()
+                assets = assetRecords.reduce((acc, asset) => {
+                    acc[asset.key] = asset.value
+                    return acc
+                }, {})
+                logger.debug(`🔑 Loaded ${assetRecords.length} assets for task execution`)
+            } catch (assetErr) {
+                logger.warn(`⚠️ Failed to load global assets: ${assetErr.message}`)
+                // Continue execution without assets
+            }
+
             // Start transaction for status update with retry logic
             let retries = 3
             let success = false
@@ -241,6 +255,7 @@ class TaskManager {
                     script: task.script,
                     // Merge base params from task with override params from options
                     params: { ...(task.params || {}), ...(options.params || {}) },
+                    assets, // Add assets to the message payload
                     options
                 }
             }

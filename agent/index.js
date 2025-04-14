@@ -96,7 +96,7 @@ function connect() {
             switch (message.type) {
                 case "EXECUTE_TASK": {
                     // Validate required task properties
-                    const { taskId, runId, name, type, script, params } = message.payload || {}
+                    const { taskId, runId, name, type, script, params, assets } = message.payload || {}
 
                     if (!taskId || !name || !type || script === undefined) {
                         logger.error(
@@ -118,7 +118,8 @@ function connect() {
                             throw new Error(`Unsupported script type: ${type}`)
                         }
 
-                        const process = await runner.run(script, params)
+                        // Pass both params and assets to the runner
+                        const process = await runner.run(script, params, assets || {})
                         const startTime = Date.now()
 
                         // Store running task info
@@ -149,7 +150,7 @@ function connect() {
                             success: false,
                             code: 1,
                             stdout: "",
-                            stderr: err.message, // TODO - sprawdzić czy err.toString() nie jest lepsze
+                            stderr: err.message,
                             duration: 0
                         })
                         clearTaskMeta(taskId)

@@ -8,19 +8,42 @@ const logger = require("../utils/logger")
 /**
  * Convert parameters to environment variables
  * @param {Object} params Parameters to inject
+ * @param {Object} assets Global assets to inject
  * @returns {Object} Environment variables object
  */
-function generateEnvironment(params) {
+function generateEnvironment(params, assets = {}) {
     const env = { ...process.env }
     try {
+        // Process regular parameters
         Object.entries(params).forEach(([key, value]) => {
             // Convert all values to strings since env vars must be strings
             env[`PARAM_${key.toUpperCase()}`] = typeof value === "object" ? JSON.stringify(value) : String(value)
         })
         logger.debug(
-            "🔄 Generated environment variables:",
+            "🔄 Generated parameter environment variables:",
             Object.keys(params).map(k => `PARAM_${k.toUpperCase()}`)
         )
+
+        // Process global assets
+        if (assets && typeof assets === "object") {
+            Object.entries(assets).forEach(([key, value]) => {
+                if (!key || typeof key !== "string") {
+                    logger.warn(`⚠️ Invalid asset key: ${key}, skipping`)
+                    return
+                }
+
+                try {
+                    env[`ASSET_${key.toUpperCase()}`] = String(value)
+                } catch (valueErr) {
+                    logger.warn(`⚠️ Could not convert asset ${key} to string, using empty string`, valueErr)
+                    env[`ASSET_${key.toUpperCase()}`] = ""
+                }
+            })
+            logger.debug(
+                "🔑 Generated asset environment variables:",
+                Object.keys(assets).map(k => `ASSET_${k.toUpperCase()}`)
+            )
+        }
     } catch (err) {
         logger.error("❌ Failed to convert parameters to env vars:", err)
     }
@@ -31,13 +54,14 @@ function generateEnvironment(params) {
  * Create a Python process to execute code
  * @param {string} script Python code to execute
  * @param {Object} params Parameters to inject into script
+ * @param {Object} assets Global assets to inject into script
  * @returns {Promise<Object>} Process handle and result promise
  */
-function createProcess(script, params = {}) {
+function createProcess(script, params = {}, assets = {}) {
     return new Promise(resolve => {
         try {
             // Set up Python process with environment variables
-            const env = generateEnvironment(params)
+            const env = generateEnvironment(params, assets)
             logger.info("🐍 Starting Python script execution")
 
             const proc = spawn("python", ["-c", script], {
@@ -130,10 +154,11 @@ function createProcess(script, params = {}) {
  * Execute Python code with parameters
  * @param {string} script Python code to execute
  * @param {Object} params Parameters to inject into script
+ * @param {Object} assets Global assets to inject into script
  * @returns {Promise<Object>} Execution results
  */
-async function run(script, params = {}) {
-    return createProcess(script, params)
+async function run(script, params = {}, assets = {}) {
+    return createProcess(script, params, assets)
 }
 
 module.exports = { run, createProcess }
