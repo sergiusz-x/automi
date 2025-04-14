@@ -34,7 +34,7 @@ Automi consists of two main components:
 You can view and explore the code directly in your browser using VS Code online:
 [Open in VS Code](https://vscode.dev/github/sergiusz-x/automi)
 
-<video src="./docs/attachments/demo.mp4" controls autoplay muted loop preload="auto" alt="Automi Demo"></video>
+![Automi Demo](./docs/attachments/demo.gif)
 <div align="center">
   <img src="./docs/attachments/bot_status.png" alt="Bot status">
   <br>
