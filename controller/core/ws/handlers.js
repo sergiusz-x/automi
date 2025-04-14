@@ -120,6 +120,14 @@ function validateIpAddress(agent, ip) {
  */
 function isIpInCidrRange(ip, cidr) {
     try {
+        // Handle IPv6
+        if (ip.includes(':')) {
+            // Simplified handling for IPv6 - just check for exact matches for now
+            const [cidrIp] = cidr.split('/');
+            return ip === cidrIp;
+        }
+        
+        // Original code for IPv4
         const [range, bits] = cidr.split("/")
         const mask = parseInt(bits, 10)
 
