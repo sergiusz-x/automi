@@ -367,7 +367,9 @@ module.exports = {
 
                     // Update pagination buttons
                     const totalPages = Math.ceil(currentRuns.length / PAGE_SIZE)
-                    if (components[0]) {
+                    
+                    // Check if pagination row exists before updating buttons
+                    if (components[0] && components[0].components && components[0].components.length >= 2) {
                         components[0].components[0].setDisabled(currentPage === 1)
                         components[0].components[1].setDisabled(currentPage === totalPages)
                     }
