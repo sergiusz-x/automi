@@ -7,6 +7,9 @@
  * - Task scheduler for automated execution
  */
 const logger = require("./utils/logger")
+logger.info("\n\n\n🚀 Starting Automi Controller...")
+
+
 const startWebSocketServer = require("./core/ws")
 const startDiscordBot = require("./bot")
 const startScheduler = require("./core/scheduler")
@@ -17,7 +20,6 @@ const db = require("./db")
  * Handles startup in the correct order and proper error handling
  */
 async function startController() {
-    logger.info("🚀 Starting Automi Controller...")
 
     try {
         // Initialize database connection with retries

@@ -8,8 +8,6 @@ const path = require("path")
 const config = require("../utils/config")
 const logger = require("../utils/logger")
 
-logger.info("\n\n\n🚀 Starting controller ...")
-
 // Validate database configuration before attempting connection
 const dbConfig = config.database || {}
 if (!dbConfig.name || !dbConfig.username || !dbConfig.host) {

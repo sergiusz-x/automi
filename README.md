@@ -31,7 +31,15 @@ Automi consists of two main components:
 
 ## 🎬 Demo
 
-<!-- soon -->
+You can view and explore the code directly in your browser using VS Code online:
+[Open in VS Code](https://vscode.dev/github/sergiusz-x/automi)
+
+![Automi Demo MP4](./docs/attachments/demo.mp4)
+<div align="center">
+  <img src="./docs/attachments/bot_status.png" alt="Bot status">
+  
+  <img src="./docs/attachments/bot_presence.png" alt="Bot presence">
+</div>
 
 ## 📝 System Requirements
 

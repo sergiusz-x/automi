@@ -1,5 +1,5 @@
 {
     "agentId": "agent-id-here",
     "token": "your-secure-token-here",
-    "controllerUrl": "ws://controller-host:4000"
+    "controllerUrl": "ws://localhost:4000"
 }

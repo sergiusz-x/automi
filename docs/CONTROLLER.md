@@ -1,6 +1,6 @@
 # Controller Documentation
 
-[← Back to main README](../README.md)
+[← Back to main README](../README.md#-documentation)
 
 The Controller is the central component of the Automi system, responsible for managing all automation tasks, agents, and providing the Discord bot interface.
 
@@ -103,4 +103,4 @@ logs/
   controller-YYYY-MM-DD.log
 ```
 
-[← Back to main README](../README.md)
+[← Back to main README](../README.md#-documentation) | [Next: Agent Documentation →](AGENTS.md)

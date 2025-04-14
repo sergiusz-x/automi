@@ -1,6 +1,6 @@
 # Discord Bot Documentation
 
-[← Back to main README](../README.md)
+[← Back to main README](../README.md#-documentation)
 
 The Discord bot provides a user-friendly interface to interact with the Automi system, allowing you to manage agents, tasks, and view logs directly from Discord.
 
@@ -102,4 +102,4 @@ The controller configuration includes a `webhookUrl` setting that sends notifica
 }
 ```
 
-[← Back to main README](../README.md)
+[← Back to main README](../README.md#-documentation)

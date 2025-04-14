@@ -1,6 +1,6 @@
 # Agents Documentation
 
-[← Back to main README](../README.md)
+[← Back to main README](../README.md#-documentation)
 
 Agents are distributed task executors in the Automi system, responsible for running automation scripts on their host machines.
 
@@ -21,7 +21,7 @@ Agent consists of:
 
 ## Installation
 
-For installation instructions, refer to the [Installation Guide](./INSTALLATION.md).
+For installation instructions, refer to the [Installation Guide](./INSTALLATION.md#agent-installation).
 
 ## Configuration
 
@@ -158,4 +158,4 @@ Agents can:
 - Detect and report if a task exceeds time limits
 - Clean up after task completion or failure
 
-[← Back to main README](../README.md)
+[← Back to main README](../README.md#-documentation) | [Next: Discord Bot Documentation →](BOT.md)

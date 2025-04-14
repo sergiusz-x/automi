@@ -1,6 +1,6 @@
 # Installation Guide
 
-[← Back to main README](../README.md)
+[← Back to main README](../README.md#-documentation)
 
 This guide covers the installation and configuration process for both the Automi Controller and Agents.
 
@@ -188,4 +188,4 @@ For SSL connections, agents should use secure WebSocket protocol:
 
 > **Note**: Using SSL is highly recommended for production environments, especially if agents connect over public networks.
 
-[← Back to main README](../README.md)
+[← Back to main README](../README.md#-documentation) | [Next: Controller Documentation →](CONTROLLER.md)
