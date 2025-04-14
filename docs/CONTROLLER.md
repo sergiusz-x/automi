@@ -55,9 +55,6 @@ The Controller is configured through the `config.json` file:
 
 ```json
 {
-    "app": {
-        "port": 3000
-    },
     "websocket": {
         "port": 4000,
         "useSSL": false,

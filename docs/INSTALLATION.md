@@ -40,9 +40,6 @@ Edit the `config.json` file with your settings:
 
 ```json
 {
-    "app": {
-        "port": 3000
-    },
     "websocket": {
         "port": 4000,
         "useSSL": false,
