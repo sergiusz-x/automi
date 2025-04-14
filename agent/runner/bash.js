@@ -134,6 +134,12 @@ async function createProcess(script, params = {}, assets = {}) {
         })
     }
 
+    // Ensure script is not empty to prevent "-c: option requires an argument" error
+    if (script.trim() === "") {
+        script = 'echo "Warning: Empty script content provided"'
+        logger.warn("⚠️ Empty script content provided, using default echo command")
+    }
+
     return new Promise(async resolve => {
         let proc = null
 
