@@ -22,6 +22,7 @@ The Controller maintains a MySQL database with the following models:
 - **Tasks**: Automation task definitions
 - **TaskRun**: Historical record of task executions
 - **TaskDependency**: Relationships between dependent tasks
+- **Assets**: Global key-value pairs accessible to all tasks
 
 ### WebSocket Server
 

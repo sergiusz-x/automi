@@ -16,6 +16,7 @@ Automi is a modular automation system designed to execute scripts (Bash, Python,
 - **📜 Multi-language Task Execution**: Run tasks in Bash, Python, or Node.js
 - **⏰ Task Scheduling**: Automate recurring tasks with flexible scheduling
 - **🔄 Task Dependencies**: Create complex workflows with dependent tasks
+- **🔑 Global Assets**: Store and use key-value pairs across all tasks and agents
 - **📊 Logging System**: Comprehensive logging for monitoring and troubleshooting
 
 ## 🏗️ System Architecture

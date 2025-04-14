@@ -26,6 +26,15 @@ Below is a comprehensive list of all available Discord bot commands:
 | `/agent info` | Shows detailed information about a specific agent | `/agent info id:<agent_id>` |
 | `/agent list` | Lists all registered agents with their status | `/agent list` |
 
+### Asset Commands
+
+| Command | Description | Usage |
+|---------|-------------|-------|
+| `/asset add` | Adds a new global asset to the system | `/asset add` |
+| `/asset edit` | Edits an existing global asset | `/asset edit key:<asset_key>` |
+| `/asset delete` | Removes a global asset from the system | `/asset delete key:<asset_key>` |
+| `/asset list` | Lists all global assets in the system | `/asset list` |
+
 ### Task Commands
 
 | Command | Description | Usage |

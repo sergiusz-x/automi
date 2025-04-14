@@ -126,6 +126,36 @@ When running tasks manually via Discord, you can specify parameters using the `p
 /task run name:example_task params:{"example":"Lorem Ipsum"}
 ```
 
+## Global Assets
+
+Global assets are key-value pairs stored in the system that can be accessed by all tasks across all agents. They're useful for:
+- Storing API keys and credentials
+- Sharing configuration values between different tasks
+- Maintaining state or data that needs to be accessed by multiple tasks
+
+### Accessing Assets in Scripts
+
+Global assets are automatically injected as environment variables with the `ASSET_` prefix:
+
+#### In Bash scripts:
+```bash
+echo "Example asset: $ASSET_EXAMPLE"
+```
+
+#### In Python scripts:
+```python
+example = os.environ['ASSET_EXAMPLE']
+```
+
+#### In Node.js scripts:
+```javascript
+const example = process.env.ASSET_EXAMPLE
+```
+
+### Asset Security
+
+Assets are stored in the database and transmitted only to agents during task execution. They're ideal for storing information that needs to be accessed across multiple tasks without hardcoding values in scripts.
+
 ## Logs
 
 Agent logs are stored in the `logs/` directory:
