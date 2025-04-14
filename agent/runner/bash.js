@@ -164,7 +164,17 @@ async function createProcess(script, params = {}, assets = {}) {
                 }
             } else {
                 shell = "/bin/bash"
-                shellArgs = ["--restricted", "--noprofile", "--norc", "-c", script]
+
+                // Check if BASH_RESTRICTED asset is explicitly set to false
+                const useRestrictedMode = assets?.BASH_RESTRICTED != false && assets?.bash_restricted != false
+
+                if (useRestrictedMode) {
+                    shellArgs = ["--restricted", "--noprofile", "--norc", "-c", script]
+                    logger.debug("🔒 Using restricted mode for bash (BASH_RESTRICTED not set to false)")
+                } else {
+                    shellArgs = ["--noprofile", "--norc", "-c", script]
+                    logger.debug("🔓 Using unrestricted mode for bash (BASH_RESTRICTED set to false)")
+                }
             }
 
             logger.info(`🐚 Using shell: ${shell}`)
