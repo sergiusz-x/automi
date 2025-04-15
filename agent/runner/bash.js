@@ -134,7 +134,7 @@ async function createProcess(script, params = {}, assets = {}) {
         })
     }
 
-    // Ensure script is not empty to prevent "-c: option requires an argument" error
+    // Ensure script is not empty to prevent execution errors
     if (script.trim() === "") {
         script = 'echo "Warning: Empty script content provided"'
         logger.warn("⚠️ Empty script content provided, using default echo command")
@@ -142,10 +142,39 @@ async function createProcess(script, params = {}, assets = {}) {
 
     return new Promise(async resolve => {
         let proc = null
+        let tmpFile = null
 
         try {
             // Set up environment with parameters and assets
             const env = generateEnvironment(params, assets)
+
+            // Always use temp file instead of -c
+            const tmpDir = os.tmpdir()
+            tmpFile = path.join(tmpDir, `script-${Date.now()}.sh`)
+
+            // Prepare script with appropriate header
+            let scriptContent = script
+
+            // If script starts with shebang, preserve it
+            if (scriptContent.startsWith("#!")) {
+                const lines = scriptContent.split(/\r?\n/)
+                lines.splice(1, 0, "set +o verbose", "set +o xtrace")
+                scriptContent = lines.join("\n")
+            } else {
+                // If no shebang, add it
+                scriptContent = "#!/bin/bash\nset +o verbose\nset +o xtrace\n" + scriptContent
+            }
+
+            // Save script to temp file
+            await fs.writeFile(tmpFile, scriptContent, "utf8")
+            logger.debug(`Created temporary script at: ${tmpFile}`)
+
+            // Set execute permissions
+            try {
+                await fs.chmod(tmpFile, 0o755)
+            } catch (err) {
+                logger.warn("⚠️ Could not set execute permissions on temp file")
+            }
 
             // Determine which shell to use based on OS
             let shell,
@@ -157,33 +186,33 @@ async function createProcess(script, params = {}, assets = {}) {
                     const gitBash = await findGitBash()
                     if (gitBash) {
                         shell = gitBash
-                        shellArgs = ["--login", "-c", script]
-                        useShell = false // Don't use shell when using Git Bash directly
+                        shellArgs = ["--login", tmpFile]
+                        useShell = false // Don't use system shell when using Git Bash
                     } else {
                         shell = "cmd.exe"
-                        shellArgs = ["/c", script]
+                        shellArgs = ["/c", tmpFile]
                     }
                 } catch (shellErr) {
                     logger.error("❌ Error determining shell:", shellErr)
                     shell = "cmd.exe"
-                    shellArgs = ["/c", script]
+                    shellArgs = ["/c", tmpFile]
                 }
             } else {
                 shell = "/bin/bash"
 
-                // Check if BASH_RESTRICTED asset is explicitly set to false
-                const useRestrictedMode = assets?.BASH_RESTRICTED != false && assets?.bash_restricted != false
+                // Check if restricted mode is enabled
+                const useRestrictedMode = assets?.BASH_RESTRICTED === true
 
                 if (useRestrictedMode) {
-                    shellArgs = ["--restricted", "--noprofile", "--norc", "-c", script]
-                    logger.debug("🔒 Using restricted mode for bash (BASH_RESTRICTED not set to false)")
+                    shellArgs = ["--restricted", "--noprofile", "--norc", tmpFile]
+                    logger.debug("🔒 Using restricted mode for bash")
                 } else {
-                    shellArgs = ["--noprofile", "--norc", "-c", script]
-                    logger.debug("🔓 Using unrestricted mode for bash (BASH_RESTRICTED set to false)")
+                    shellArgs = ["--noprofile", "--norc", tmpFile]
+                    logger.debug("🔓 Using unrestricted mode for bash")
                 }
             }
 
-            logger.info(`🐚 Using shell: ${shell}`)
+            logger.info(`🐚 Executing script with ${shell}`)
 
             // Set up shell process
             try {
@@ -195,6 +224,10 @@ async function createProcess(script, params = {}, assets = {}) {
                 })
             } catch (spawnErr) {
                 logger.error("❌ Failed to spawn process:", spawnErr)
+
+                // Clean up temp file in case of error
+                await cleanupTempFile(tmpFile)
+
                 return resolve({
                     success: false,
                     code: 1,
@@ -232,9 +265,12 @@ async function createProcess(script, params = {}, assets = {}) {
             })
 
             // Handle process completion
-            proc.on("close", code => {
+            proc.on("close", async code => {
+                // Cleanup temp file
+                await cleanupTempFile(tmpFile)
+
                 const success = code === 0 && !hasError && !killed
-                logger.info(`${success ? "✅" : "❌"} Script finished with code ${code}, success: ${success}`)
+                logger.info(`${success ? "✅" : "❌"} Script finished with code ${code}`)
 
                 if (code !== 0) {
                     logger.error(`❌ Process exited with non-zero code ${code}`)
@@ -249,7 +285,10 @@ async function createProcess(script, params = {}, assets = {}) {
             })
 
             // Handle process errors
-            proc.on("error", err => {
+            proc.on("error", async err => {
+                // Cleanup temp file on error
+                await cleanupTempFile(tmpFile)
+
                 logger.error("❌ Failed to start or run process:", err)
                 resolve({
                     success: false,
@@ -260,7 +299,10 @@ async function createProcess(script, params = {}, assets = {}) {
             })
 
             // Handle timeout
-            proc.on("timeout", () => {
+            proc.on("timeout", async () => {
+                // Cleanup temp file on timeout
+                await cleanupTempFile(tmpFile)
+
                 logger.error("⏱️ Script execution timed out")
                 killed = true
                 try {
@@ -298,6 +340,9 @@ async function createProcess(script, params = {}, assets = {}) {
                 }
             }
         } catch (err) {
+            // Cleanup temp file on error
+            await cleanupTempFile(tmpFile)
+
             logger.error("❌ Critical error in script execution:", err)
             resolve({
                 success: false,
@@ -307,6 +352,22 @@ async function createProcess(script, params = {}, assets = {}) {
             })
         }
     })
+}
+
+/**
+ * Helper function to clean up temporary files
+ * @param {string|null} filePath Path to the temp file to delete
+ */
+async function cleanupTempFile(filePath) {
+    if (filePath) {
+        try {
+            await fs.unlink(filePath)
+            logger.debug("🧹 Temporary script file removed")
+        } catch (err) {
+            // Just log and continue
+            logger.debug("⚠️ Could not remove temporary file")
+        }
+    }
 }
 
 /**
