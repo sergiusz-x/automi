@@ -13,6 +13,36 @@ const MESSAGE_RATE_LIMIT = 100 // messages per window
 const RATE_LIMIT_WINDOW = 60000 // 1 minute in ms
 const rateLimiters = new Map() // agentId -> {count, resetTime}
 
+// Cloudflare IP ranges - can be updated periodically if needed
+// Source: https://www.cloudflare.com/ips/
+const CLOUDFLARE_IPV4_RANGES = [
+    "173.245.48.0/20",
+    "103.21.244.0/22",
+    "103.22.200.0/22",
+    "103.31.4.0/22",
+    "141.101.64.0/18",
+    "108.162.192.0/18",
+    "190.93.240.0/20",
+    "188.114.96.0/20",
+    "197.234.240.0/22",
+    "198.41.128.0/17",
+    "162.158.0.0/15",
+    "172.64.0.0/13",
+    "131.0.72.0/22",
+    "104.16.0.0/13",
+    "104.24.0.0/14"
+]
+
+const CLOUDFLARE_IPV6_RANGES = [
+    "2400:cb00::/32",
+    "2606:4700::/32",
+    "2803:f800::/32",
+    "2405:b500::/32",
+    "2405:8100::/32",
+    "2a06:98c0::/29",
+    "2c0f:f248::/32"
+]
+
 /**
  * Rate limiting check for message processing
  * @param {string} agentId - Agent identifier
@@ -121,12 +151,12 @@ function validateIpAddress(agent, ip) {
 function isIpInCidrRange(ip, cidr) {
     try {
         // Handle IPv6
-        if (ip.includes(':')) {
+        if (ip.includes(":")) {
             // Simplified handling for IPv6 - just check for exact matches for now
-            const [cidrIp] = cidr.split('/');
-            return ip === cidrIp;
+            const [cidrIp] = cidr.split("/")
+            return ip === cidrIp
         }
-        
+
         // Original code for IPv4
         const [range, bits] = cidr.split("/")
         const mask = parseInt(bits, 10)
@@ -249,7 +279,7 @@ async function processTaskResult(agentId, payload) {
  * @param {http.IncomingMessage} req - HTTP request object
  */
 function handleAgentConnection(socket, req) {
-    const ip = req.socket.remoteAddress
+    const ip = getClientIp(req)
     logger.info(`🔌 New WebSocket connection from ${ip}`)
 
     socket.on("open", () => {
@@ -337,7 +367,9 @@ function handleAgentConnection(socket, req) {
                     }
 
                     if (message.type === "agent_error" && message.payload) {
-                        logger.error(`❌ Agent ${agentId} reported error: ${message.payload.error} (at ${message.payload.timestamp})`)
+                        logger.error(
+                            `❌ Agent ${agentId} reported error: ${message.payload.error} (at ${message.payload.timestamp})`
+                        )
                         return
                     }
 
@@ -372,6 +404,59 @@ function handleAgentConnection(socket, req) {
             logger.error(`❌ Error processing handshake:`, err)
             socket.close(4000, "Invalid message format")
         }
+    })
+}
+
+/**
+ * Get client IP address, considering Cloudflare headers
+ * @param {http.IncomingMessage} req - HTTP request object
+ * @returns {string} - Client IP address
+ */
+function getClientIp(req) {
+    // Return 'cf-connecting-ip' if available (prioritized)
+    // Alternatively 'x-forwarded-for' or direct IP address
+    const directIp = req.socket.remoteAddress
+
+    // Check if connection is coming from Cloudflare Proxy
+    const isCloudflare = isCloudflareIp(directIp)
+
+    const cloudflareIp = req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"]
+
+    if (isCloudflare && cloudflareIp) {
+        // If coming from Cloudflare and we have header with real IP
+        logger.debug(`Cloudflare proxy detected: ${directIp}, real client IP: ${cloudflareIp}`)
+        return Array.isArray(cloudflareIp) ? cloudflareIp[0] : cloudflareIp
+    }
+
+    // If not from Cloudflare or no headers - return direct IP
+    return directIp
+}
+
+/**
+ * Check if IP is from Cloudflare's range
+ * @param {string} ip - IP to check
+ * @returns {boolean} - true if IP is from Cloudflare
+ */
+function isCloudflareIp(ip) {
+    if (!ip) return false
+
+    // Handle IPv4-mapped IPv6 addresses (::ffff:a.b.c.d)
+    let ipToCheck = ip
+    if (ip.startsWith("::ffff:")) {
+        ipToCheck = ip.substring(7)
+        logger.debug(`Converting IPv4-mapped IPv6 address ${ip} to IPv4: ${ipToCheck}`)
+    }
+
+    // Check IPv4
+    if (!ipToCheck.includes(":")) {
+        return CLOUDFLARE_IPV4_RANGES.some(range => isIpInCidrRange(ipToCheck, range))
+    }
+
+    // Check IPv6
+    return CLOUDFLARE_IPV6_RANGES.some(range => {
+        // Simple implementation for IPv6, can be extended in the future
+        const [prefix] = range.split("/")
+        return ipToCheck.startsWith(prefix.slice(0, prefix.lastIndexOf(":")))
     })
 }
 
