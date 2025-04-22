@@ -38,11 +38,16 @@ function stringifyArg(arg) {
 }
 
 // Create Winston logger with file rotation
+const debugEnabled = process.env.DEBUG === "true" || process.env.DEBUG === true || process.env.DEBUG === "1"
+
+// Configure logger with debug level if enabled
 const winstonLogger = createLogger({
+    level: debugEnabled ? "debug" : "info", // Set minimum log level
     format: format.combine(format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }), logFormat),
     transports: [
         // Console transport with colors
         new transports.Console({
+            level: debugEnabled ? "debug" : "info", // Set minimum log level for console
             format: format.combine(
                 format.colorize({ all: true }),
                 format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
@@ -51,6 +56,7 @@ const winstonLogger = createLogger({
         }),
         // Rotating file transport with compression
         new transports.DailyRotateFile({
+            level: debugEnabled ? "debug" : "info", // Set minimum log level for file
             filename: path.join(logsDir, "controller-%DATE%.log"),
             datePattern: "YYYY-MM-DD",
             zippedArchive: true,
@@ -59,6 +65,11 @@ const winstonLogger = createLogger({
         })
     ]
 })
+
+// If debug mode is enabled, log it on startup
+if (debugEnabled) {
+    winstonLogger.debug("🐛 Debug logging enabled")
+}
 
 // Load error state from file if exists
 let errorsOccurred = false
@@ -148,7 +159,7 @@ const logger = {
      * @param {...any} args - Message and additional data to log
      */
     debug: (...args) => {
-        if (process.env.DEBUG === "true") {
+        if (debugEnabled) {
             const message = args.map(stringifyArg).join(" ")
             winstonLogger.debug(message)
         }

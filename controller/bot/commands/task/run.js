@@ -186,7 +186,7 @@ module.exports = {
             // Set up cancel button collector
             const collector = message.createMessageComponentCollector({
                 filter: i => i.user.id === interaction.user.id,
-                time: 300000 // 5 minutes
+                time: 900000 // 15 minutes
             })
 
             collector.on("collect", async i => {
@@ -268,7 +268,7 @@ module.exports = {
                 clearInterval(updateInterval)
                 collector.stop()
                 logger.info(`⏱️ Status updates stopped due to timeout`)
-            }, 300000) // 5 minutes timeout
+            }, 900000) // 15 minutes timeout
         } catch (err) {
             logger.error("❌ Failed to run task:", err)
             return interaction.editReply({

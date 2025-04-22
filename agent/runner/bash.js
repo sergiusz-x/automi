@@ -219,7 +219,7 @@ async function createProcess(script, params = {}, assets = {}) {
                 proc = spawn(shell, shellArgs, {
                     env,
                     shell: useShell,
-                    timeout: 300000, // 5-minute timeout
+                    timeout: 900000, // 15-minute timeout
                     killSignal: "SIGTERM"
                 })
             } catch (spawnErr) {
@@ -314,7 +314,7 @@ async function createProcess(script, params = {}, assets = {}) {
                     success: false,
                     code: 124,
                     stdout: stdout.trim(),
-                    stderr: `${stderr.trim()}\nProcess timed out after 5 minutes`
+                    stderr: `${stderr.trim()}\nProcess timed out after 15 minutes`
                 })
             })
 
@@ -375,20 +375,44 @@ async function cleanupTempFile(filePath) {
  * @param {string} script Shell script to execute
  * @param {Object} params Parameters to inject as environment variables
  * @param {Object} assets Global assets to inject as environment variables
- * @returns {Promise<Object>} Execution results
+ * @returns {Promise<Object>} An object containing process and result promise
  */
 async function run(script, params = {}, assets = {}) {
     try {
-        return await createProcess(script, params, assets)
+        // Create the process but don't await the result
+        const processPromise = createProcess(script, params, assets)
+
+        // Return both the promise and methods to control the process
+        return {
+            // The promise that will resolve with the final result
+            resultPromise: processPromise,
+
+            // Method to kill the process
+            async kill() {
+                try {
+                    const proc = await processPromise
+                    if (proc && proc.kill && typeof proc.kill === "function") {
+                        return proc.kill()
+                    }
+                    return false
+                } catch (err) {
+                    logger.error(`❌ Error killing bash process: ${err.message}`)
+                    return false
+                }
+            }
+        }
     } catch (err) {
         logger.error("❌ Unhandled exception in bash runner:", err)
         return {
-            success: false,
-            code: 1,
-            stdout: "",
-            stderr: `Unhandled exception in bash runner: ${err.toString()}`
+            resultPromise: Promise.resolve({
+                success: false,
+                code: 1,
+                stdout: "",
+                stderr: `Unhandled exception in bash runner: ${err.toString()}`
+            }),
+            kill: () => false
         }
     }
 }
 
-module.exports = { run, createProcess }
+module.exports = { run, createProcess, extractTaskDuration: null }

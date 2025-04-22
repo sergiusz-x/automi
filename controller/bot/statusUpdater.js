@@ -125,97 +125,141 @@ async function getStats() {
  * Calculate next run times for a task based on cron schedule
  * @param {string} cronExpression Cron expression
  * @param {number} daysToShow Number of days to look ahead
- * @returns {Array<Date>} Array of upcoming execution dates
+ * @returns {Array<Object>} Array of upcoming execution dates with metadata
  */
-function getNextRunTimes(cronExpression, daysToShow = 3) {
+function getNextRunTimes(cronExpression, daysToShow = 7) {
     if (!cronExpression) return []
 
+    // Try using the fallback implementation directly
+    // This avoids issues with the cron-parser library
+    return getFallbackRunTimes(cronExpression, daysToShow)
+}
+
+/**
+ * Fallback implementation for calculating run times using node-cron
+ * @param {string} cronExpression Cron expression
+ * @param {number} daysToShow Number of days to look ahead
+ * @returns {Array<Object>} Array of upcoming execution dates with metadata
+ */
+function getFallbackRunTimes(cronExpression, daysToShow = 7) {
     try {
         const cron = require("node-cron")
 
-        // Validate the cron expression
         if (!cron.validate(cronExpression)) {
             logger.warn(`⚠️ Invalid cron expression: ${cronExpression}`)
             return []
         }
 
-        const dates = []
+        // Output array
+        const results = []
+
+        // Current time
         const now = new Date()
-        const endDate = new Date(now)
-        endDate.setDate(endDate.getDate() + daysToShow)
 
-        // Start from beginning of today, not from now
-        const startOfToday = new Date(now)
-        startOfToday.setHours(0, 0, 0, 0)
-
-        // For each day
+        // For each day in the range
         for (let day = 0; day < daysToShow; day++) {
-            const currentDate = new Date(startOfToday)
-            currentDate.setDate(currentDate.getDate() + day)
+            // Base date for this day at midnight
+            const baseDate = new Date(now)
+            baseDate.setDate(now.getDate() + day)
+            baseDate.setHours(0, 0, 0, 0)
 
-            // For each hour of the day
-            for (let hour = 0; hour < 24; hour++) {
-                currentDate.setHours(hour)
+            // Parse cron expression parts
+            const parts = cronExpression.split(" ")
+            if (parts.length !== 5) continue
 
-                // For each minute of the hour
-                for (let minute = 0; minute < 60; minute++) {
-                    currentDate.setMinutes(minute, 0, 0)
+            const [minute, hour, dayOfMonth, month, dayOfWeek] = parts
 
-                    // Check if the schedule matches this time
-                    const parts = cronExpression.split(" ")
-                    const cronMinute = parts[0]
-                    const cronHour = parts[1]
-                    const cronDayOfMonth = parts[2]
-                    const cronMonth = parts[3]
-                    const cronDayOfWeek = parts[4]
+            // Check if this date matches the day constraints
+            const thisDayOfMonth = baseDate.getDate()
+            const thisMonth = baseDate.getMonth() + 1 // 1-12 (JS months are 0-based)
+            const thisDayOfWeek = baseDate.getDay() // 0-6 (0 is Sunday)
 
-                    // Check minute
-                    if (
-                        cronMinute !== "*" &&
-                        !cronMinute.includes(minute.toString()) &&
-                        !evalCronPart(cronMinute, minute)
-                    )
-                        continue
+            if (
+                !matchesCronPart(dayOfMonth, thisDayOfMonth) ||
+                !matchesCronPart(month, thisMonth) ||
+                !matchesCronDayOfWeek(dayOfWeek, thisDayOfWeek)
+            ) {
+                continue
+            }
 
-                    // Check hour
-                    if (cronHour !== "*" && !cronHour.includes(hour.toString()) && !evalCronPart(cronHour, hour))
-                        continue
+            // For each hour that matches
+            for (let h = 0; h < 24; h++) {
+                if (!matchesCronPart(hour, h)) continue
 
-                    // Check day of month
-                    if (
-                        cronDayOfMonth !== "*" &&
-                        !cronDayOfMonth.includes(currentDate.getDate().toString()) &&
-                        !evalCronPart(cronDayOfMonth, currentDate.getDate())
-                    )
-                        continue
+                // For each minute that matches
+                for (let m = 0; m < 60; m++) {
+                    if (!matchesCronPart(minute, m)) continue
 
-                    // Check month (0-11 in JS, 1-12 in cron)
-                    if (
-                        cronMonth !== "*" &&
-                        !cronMonth.includes((currentDate.getMonth() + 1).toString()) &&
-                        !evalCronPart(cronMonth, currentDate.getMonth() + 1)
-                    )
-                        continue
+                    const executionDate = new Date(baseDate)
+                    executionDate.setHours(h, m, 0, 0)
 
-                    // Check day of week (0-6 in JS where 0 is Sunday, 0-6 in cron where 0 is Sunday)
-                    if (
-                        cronDayOfWeek !== "*" &&
-                        !cronDayOfWeek.includes(currentDate.getDay().toString()) &&
-                        !evalCronPart(cronDayOfWeek, currentDate.getDay())
-                    )
-                        continue
+                    const dayKey = executionDate.toISOString().split("T")[0]
+                    const isPast = executionDate < now
 
-                    // All parts match, add this date
-                    dates.push(new Date(currentDate))
+                    results.push({
+                        date: executionDate,
+                        timestamp: Math.floor(executionDate.getTime() / 1000),
+                        dayKey: dayKey,
+                        isPast: isPast,
+                        day: day // Store which day this is for easier debugging
+                    })
                 }
             }
         }
 
-        return dates
+        // Sort results by date
+        results.sort((a, b) => a.date - b.date)
+        return results
     } catch (err) {
-        logger.error(`❌ Error parsing cron expression: ${cronExpression}`, err)
+        logger.error(`❌ Fallback cron calculation failed:`, err)
         return []
     }
+}
+
+/**
+ * Check if a value matches a cron part expression
+ * @param {string} cronPart Cron part expression
+ * @param {number} value Value to check
+ * @returns {boolean} True if value matches the cron part
+ */
+function matchesCronPart(cronPart, value) {
+    if (cronPart === "*") return true
+
+    // Handle */n format (every n units)
+    if (cronPart.includes("*/")) {
+        const divisor = parseInt(cronPart.split("/")[1], 10)
+        return value % divisor === 0
+    }
+
+    // Handle ranges (e.g., 1-5)
+    if (cronPart.includes("-")) {
+        const [start, end] = cronPart.split("-").map(Number)
+        return value >= start && value <= end
+    }
+
+    // Handle lists (e.g., 1,3,5)
+    if (cronPart.includes(",")) {
+        return cronPart.split(",").map(Number).includes(value)
+    }
+
+    // Simple number comparison
+    return parseInt(cronPart, 10) === value
+}
+
+/**
+ * Special handler for day of week in cron
+ * @param {string} cronDayOfWeek Cron day of week part (0-6, where 0 is Sunday)
+ * @param {number} dayOfWeek JavaScript day of week (0-6, where 0 is Sunday)
+ * @returns {boolean} True if day of week matches
+ */
+function matchesCronDayOfWeek(cronDayOfWeek, dayOfWeek) {
+    // If * or 7 (both mean all days)
+    if (cronDayOfWeek === "*" || cronDayOfWeek === "7") return true
+
+    // Convert 7 to 0 (both represent Sunday in different systems)
+    const normalizedCronPart = cronDayOfWeek.replace(/7/g, "0")
+
+    return matchesCronPart(normalizedCronPart, dayOfWeek)
 }
 
 /**
@@ -270,107 +314,245 @@ function getTaskTypeEmoji(type) {
  * @param {number} daysToShow Number of days to look ahead
  * @returns {Object} Embed fields
  */
-async function createUpcomingTasksFields(tasks, daysToShow = 3) {
-    const fields = []
-    const now = new Date()
+async function createUpcomingTasksFields(tasks, daysToShow = 7) {
+    try {
+        // Get current date in server's local timezone
+        const now = new Date()
+        logger.debug(`📅 Calendar generation started at: ${now.toISOString()}`)
 
-    // Group tasks by day
-    const tasksByDay = {}
+        // Initialize days map for grouping tasks
+        const dayGroups = []
 
-    // Initialize days
-    for (let i = 0; i < daysToShow; i++) {
-        const date = new Date(now)
-        date.setDate(date.getDate() + i)
-        const dayKey = Math.floor(date.getTime() / 86400000) // Days since epoch
-        tasksByDay[dayKey] = {
-            date,
-            tasks: []
+        // Get today's date in server local timezone (YYYY-MM-DD)
+        const todayKey = new Date().toLocaleDateString("en-CA") // format: YYYY-MM-DD
+        logger.debug(`📅 Today's key date: ${todayKey}`)
+
+        // Setup days we want to display
+        for (let i = 0; i < daysToShow; i++) {
+            // Create date for day i, starting with today
+            const dayDate = new Date()
+            dayDate.setDate(dayDate.getDate() + i)
+
+            // Get the day key in local time zone (YYYY-MM-DD)
+            const dayKey = dayDate.toLocaleDateString("en-CA")
+
+            // Store in array to maintain order
+            dayGroups.push({
+                dayKey,
+                date: dayDate,
+                tasks: [],
+                dayNumber: i
+            })
+
+            logger.debug(`📅 Day ${i}: ${dayKey} (${dayDate.toDateString()})`)
         }
-    }
 
-    // Calculate upcoming runs for each task
-    for (const task of tasks) {
-        if (!task.schedule || !task.enabled) continue
+        // Get all task runs from today onwards to check for completed tasks
+        const startTime = new Date(now)
+        startTime.setHours(0, 0, 0, 0)
 
-        // Get all run times in the next N days
-        const runTimes = getNextRunTimes(task.schedule, daysToShow)
-
-        // Get recent run for this task to check if it's completed
-        const recentRuns = await db.TaskRun.findAll({
+        // Get ALL task runs for today, not just the main tasks
+        const allTaskRuns = await db.TaskRun.findAll({
             where: {
-                taskId: task.id,
                 createdAt: {
-                    [db.Sequelize.Op.gte]: new Date(now.setHours(0, 0, 0, 0))
+                    [db.Sequelize.Op.gte]: startTime
                 }
             },
-            order: [["createdAt", "DESC"]],
-            limit: 5
+            attributes: ["taskId", "status", "createdAt"]
         })
 
-        // Map run times to days
-        for (const runTime of runTimes) {
-            const dayKey = Math.floor(runTime.getTime() / 86400000) // Days since epoch
-            if (tasksByDay[dayKey]) {
-                // Get timestamp for Discord formatting
-                const timestamp = Math.floor(runTime.getTime() / 1000)
+        // Group task runs by task ID for faster lookup
+        const taskRunsByTaskId = new Map()
+        allTaskRuns.forEach(run => {
+            if (!taskRunsByTaskId.has(run.taskId)) {
+                taskRunsByTaskId.set(run.taskId, [])
+            }
+            taskRunsByTaskId.get(run.taskId).push(run)
+        })
 
-                // Check if this task already ran today at this time
-                const taskCompleted = recentRuns.some(run => {
-                    const runDate = new Date(run.createdAt)
-                    // Compare hour and minute for same time check
-                    return (
-                        runDate.getHours() === runTime.getHours() &&
-                        runDate.getMinutes() === runTime.getMinutes() &&
-                        run.status !== "pending"
-                    )
+        // Fetch all task dependencies for displaying in the calendar
+        const allDependencies = await db.TaskDependency.findAll({
+            include: [
+                {
+                    model: db.Task,
+                    as: "childTask",
+                    attributes: ["id", "name", "type", "agentId", "enabled"]
+                }
+            ]
+        })
+
+        // Group dependencies by parent task ID
+        const dependenciesByParentId = new Map()
+        allDependencies.forEach(dep => {
+            if (!dependenciesByParentId.has(dep.parentTaskId)) {
+                dependenciesByParentId.set(dep.parentTaskId, [])
+            }
+            dependenciesByParentId.get(dep.parentTaskId).push({
+                childTask: dep.childTask,
+                condition: dep.condition
+            })
+        })
+
+        logger.debug(`📅 Processing ${tasks.length} tasks for calendar...`)
+
+        // Process each task for the calendar
+        for (const task of tasks) {
+            if (!task.schedule || !task.enabled) continue
+
+            // Get upcoming execution times
+            const executions = getNextRunTimes(task.schedule, daysToShow)
+
+            if (executions.length === 0) {
+                logger.debug(`⚠️ No execution times found for task ${task.name} with schedule ${task.schedule}`)
+                continue
+            }
+
+            // Get this task's runs
+            const taskRuns = taskRunsByTaskId.get(task.id) || []
+
+            // Process each execution time
+            for (const execution of executions) {
+                const { date, timestamp, isPast } = execution
+
+                // Get day key in local timezone format to match our day groups
+                const executionDate = new Date(date)
+                const dayKey = executionDate.toLocaleDateString("en-CA")
+
+                // Find the day group for this execution
+                const dayGroup = dayGroups.find(group => group.dayKey === dayKey)
+
+                if (!dayGroup) {
+                    logger.debug(`⚠️ Day key ${dayKey} not found in day groups for task ${task.name}`)
+                    continue
+                }
+
+                // Check if this task has been completed at this time
+                const isCompleted = taskRuns.some(run => {
+                    const runTime = new Date(run.createdAt)
+                    const timeDiff = Math.abs(runTime - executionDate)
+                    return timeDiff <= 10 * 60 * 1000 && run.status !== "pending" && run.status !== "running"
                 })
 
-                tasksByDay[dayKey].tasks.push({
+                // Get the task's dependencies
+                const dependencies = dependenciesByParentId.get(task.id) || []
+
+                // Add to the appropriate day group
+                dayGroup.tasks.push({
+                    id: task.id,
                     name: task.name,
                     timestamp,
+                    formattedTime: executionDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
                     type: task.type,
                     agentId: task.agentId,
-                    completed: taskCompleted
+                    completed: isCompleted,
+                    parentCompleted: isCompleted, // Store parent completion status for children
+                    isPast,
+                    dependencies
                 })
             }
         }
-    }
 
-    // Create fields for each day
-    for (const dayKey in tasksByDay) {
-        const day = tasksByDay[dayKey]
-        const dayTimestamp = Math.floor(day.date.getTime() / 1000)
+        // Create fields for Discord embed
+        const fields = []
 
-        // Sort tasks by time
-        day.tasks.sort((a, b) => a.timestamp - b.timestamp)
-
-        // Create task list for this day
-        let taskList =
-            day.tasks.length > 0
-                ? day.tasks
-                      .map(t => {
-                          const typeEmoji = getTaskTypeEmoji(t.type)
-                          const task = `${typeEmoji} ${t.completed ? "~~" : ""}<t:${t.timestamp}:t> ${t.name} (${
-                              t.agentId
-                          })${t.completed ? "~~" : ""}`
-                          return task
-                      })
-                      .join("\n")
-                : "No scheduled tasks"
-
-        // Limit character count if needed
-        if (taskList.length > 1020) {
-            taskList = taskList.substring(0, 1000) + "\n... (more tasks not shown)"
+        // Get condition emoji for dependencies
+        function getConditionEmoji(condition) {
+            switch (condition) {
+                case "on:success":
+                    return "✅"
+                case "on:error":
+                    return "❌"
+                case "always":
+                default:
+                    return "⏭️"
+            }
         }
 
-        fields.push({
-            name: `📅 <t:${dayTimestamp}:D>`,
-            value: taskList,
-            inline: false
-        })
-    }
+        // Process each day in the original order
+        for (let i = 0; i < dayGroups.length; i++) {
+            const dayGroup = dayGroups[i]
+            const isToday = i === 0
 
-    return fields
+            // Always show today, even with no tasks
+            // For other days, only show if they have tasks
+            if (!isToday && dayGroup.tasks.length === 0) continue
+
+            // Sort tasks by time
+            dayGroup.tasks.sort((a, b) => a.timestamp - b.timestamp)
+
+            // Format the day heading with Discord timestamp
+            const dayTimestamp = Math.floor(dayGroup.date.getTime() / 1000)
+
+            // Create task list text
+            let taskList = ""
+
+            if (dayGroup.tasks.length > 0) {
+                for (const task of dayGroup.tasks) {
+                    const typeEmoji = getTaskTypeEmoji(task.type)
+                    const shouldStrikethrough = task.isPast && task.completed
+
+                    // Add the main task
+                    taskList += `${typeEmoji} ${shouldStrikethrough ? "~~" : ""}<t:${task.timestamp}:t> ${task.name} (${
+                        task.agentId
+                    })${shouldStrikethrough ? "~~" : ""}\n`
+
+                    // Add dependencies if any
+                    if (task.dependencies && task.dependencies.length > 0) {
+                        for (const dep of task.dependencies) {
+                            if (dep.childTask && dep.childTask.enabled) {
+                                const condEmoji = getConditionEmoji(dep.condition)
+                                const depTypeEmoji = getTaskTypeEmoji(dep.childTask.type)
+
+                                // Simplified logic - if the main task is completed and crossed out,
+                                // dependent tasks should also be crossed out
+                                const depStrikethrough = shouldStrikethrough
+
+                                taskList += `> ${condEmoji} ${depTypeEmoji} ${depStrikethrough ? "~~" : ""}${
+                                    dep.childTask.name
+                                } (${dep.childTask.agentId})${depStrikethrough ? "~~" : ""}\n`
+                            }
+                        }
+                    }
+                }
+            } else {
+                taskList = "No scheduled tasks"
+            }
+
+            // Truncate if needed
+            if (taskList.length > 1020) {
+                taskList = taskList.substring(0, 1000) + "\n... (more tasks not shown)"
+            }
+
+            // Add field to results
+            fields.push({
+                name: `📅 <t:${dayTimestamp}:F>`,
+                value: taskList,
+                inline: false
+            })
+
+            logger.debug(`📅 Added field for day ${dayGroup.dayKey} with ${dayGroup.tasks.length} tasks`)
+        }
+
+        // If we have no fields at all, add a message
+        if (fields.length === 0) {
+            fields.push({
+                name: "📅 Calendar",
+                value: "No scheduled tasks found.",
+                inline: false
+            })
+        }
+
+        return fields
+    } catch (err) {
+        logger.error(`❌ Error creating calendar fields:`, err)
+        return [
+            {
+                name: "📅 Calendar Error",
+                value: "Failed to create calendar. Check logs for details.",
+                inline: false
+            }
+        ]
+    }
 }
 
 /**
@@ -460,7 +642,7 @@ async function createStatusEmbed(stats) {
     })
 
     // Add upcoming tasks fields
-    const upcomingTasksFields = await createUpcomingTasksFields(scheduledTasks, 3)
+    const upcomingTasksFields = await createUpcomingTasksFields(scheduledTasks, 7)
     embed.addFields(upcomingTasksFields)
 
     return embed

@@ -78,7 +78,7 @@ async function createProcess(script, params = {}, assets = {}) {
             logger.info("🟢 Starting Node.js script execution")
             const proc = spawn("node", [tmpFile], {
                 env,
-                timeout: 300000 // 5-minute timeout
+                timeout: 900000 // 15-minute timeout
             })
 
             let stdout = ""
@@ -159,7 +159,7 @@ async function createProcess(script, params = {}, assets = {}) {
                     success: false,
                     code: 124,
                     stdout: stdout.trim(),
-                    stderr: "Process timed out after 5 minutes"
+                    stderr: "Process timed out after 15 minutes"
                 })
             })
 
@@ -186,10 +186,68 @@ async function createProcess(script, params = {}, assets = {}) {
  * @param {string} script Node.js code to execute
  * @param {Object} params Parameters to inject as environment variables
  * @param {Object} assets Global assets to inject as environment variables
- * @returns {Promise<Object>} Execution results
+ * @returns {Promise<Object>} Object containing resultPromise and kill method
  */
 async function run(script, params = {}, assets = {}) {
-    return createProcess(script, params, assets)
+    try {
+        // Store process reference outside the promise
+        let processRef = null
+        let isKilled = false
+
+        // Create the process but don't wait for it to complete
+        const processPromise = createProcess(script, params, assets).then(processObj => {
+            // Save reference to the process, but only if it wasn't canceled before
+            if (!isKilled) {
+                processRef = processObj
+            }
+            return processObj
+        })
+
+        // Return both the promise and methods to control the process
+        return {
+            // The promise that will resolve with the final result
+            resultPromise: processPromise,
+
+            // Method to kill the process when cancel is requested
+            async kill() {
+                try {
+                    isKilled = true
+
+                    // If we already have a process reference, use it
+                    if (processRef && typeof processRef.kill === "function") {
+                        logger.info("🔪 Cancelling node.js process using direct reference")
+                        return processRef.kill()
+                    }
+
+                    // If the process hasn't been created yet, wait up to 2 seconds
+                    const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 2000))
+                    const proc = await Promise.race([processPromise, timeoutPromise])
+
+                    if (proc && typeof proc.kill === "function") {
+                        logger.info("🔪 Cancelling node.js process after waiting")
+                        return proc.kill()
+                    }
+
+                    logger.warn("⚠️ Could not find node.js process to cancel")
+                    return false
+                } catch (err) {
+                    logger.error(`❌ Error killing node.js process: ${err.message}`)
+                    return false
+                }
+            }
+        }
+    } catch (err) {
+        logger.error("❌ Unhandled exception in node.js runner:", err)
+        return {
+            resultPromise: Promise.resolve({
+                success: false,
+                code: 1,
+                stdout: "",
+                stderr: `Unhandled exception in node.js runner: ${err.toString()}`
+            }),
+            kill: () => false
+        }
+    }
 }
 
 module.exports = { run, createProcess }

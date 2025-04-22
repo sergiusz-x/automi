@@ -360,10 +360,12 @@ class TaskManager {
      * @returns {Promise<boolean>} True if task was cancelled, false if not found or already completed
      */
     async cancelTask(taskId) {
-        // Find running task
-        const runningTask = Array.from(this.runningTasks.values()).find(({ task }) => task.id === taskId)
+        // Find running task by converting taskId to number for reliable comparison
+        const numTaskId = Number(taskId)
+        const runningTask = Array.from(this.runningTasks.values()).find(({ task }) => Number(task.id) === numTaskId)
 
         if (!runningTask) {
+            logger.warn(`⚠️ No running task found with ID ${taskId}`)
             return false
         }
 
@@ -374,7 +376,7 @@ class TaskManager {
             const message = {
                 type: "CANCEL_TASK",
                 payload: {
-                    taskId: task.id,
+                    taskId: task.id.toString(), // Ensure ID is sent as string for consistent handling
                     runId: run.id
                 }
             }

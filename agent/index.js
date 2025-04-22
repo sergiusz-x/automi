@@ -118,31 +118,42 @@ function connect() {
                             throw new Error(`Unsupported script type: ${type}`)
                         }
 
-                        // Pass both params and assets to the runner
-                        const process = await runner.run(script, params, assets || {})
                         const startTime = Date.now()
+                        logger.debug(`⏱️ Task ${name} starting at: ${new Date(startTime).toISOString()}`)
 
-                        // Store running task info
-                        runningTasks.set(taskId, {
-                            process,
+                        // Pass both params and assets to the runner
+                        // The runner now returns an object with resultPromise and kill method
+                        const runnerObj = await runner.run(script, params, assets || {})
+
+                        // Store running task info - BEFORE awaiting the result
+                        // Ensure taskId is stored as string for consistency
+                        const taskIdStr = taskId.toString()
+                        logger.debug(`📝 Storing task in runningTasks map with ID: ${taskIdStr}`)
+                        runningTasks.set(taskIdStr, {
+                            process: runnerObj, // Store the runner object with kill method
                             task: message.payload,
                             startTime
                         })
 
-                        // Handle process result
-                        const result = await process
+                        // Handle process result - wait for the promise to resolve
+                        const result = await runnerObj.resultPromise
+                        const endTime = Date.now()
+                        const duration = endTime - startTime
+
                         logger.info(
-                            `✅ Script execution completed with status: ${result.success ? "success" : "error"}`
+                            `✅ Script execution completed with status: ${
+                                result.success ? "success" : "error"
+                            }, duration: ${duration}ms`
                         )
 
                         // Clear task tracking
-                        runningTasks.delete(taskId)
-                        clearTaskMeta(taskId)
+                        runningTasks.delete(taskIdStr)
+                        clearTaskMeta(taskIdStr)
 
                         // Send result back to controller
                         sendTaskResult(message.payload, {
                             ...result,
-                            duration: Date.now() - startTime
+                            duration: duration
                         })
                     } catch (err) {
                         logger.error(`❌ Error executing task ${name}:`, err)
@@ -168,14 +179,27 @@ function connect() {
 
                     logger.info(`🛑 Processing CANCEL_TASK message for task ${taskId}`)
 
-                    const running = runningTasks.get(taskId)
-                    if (running?.process) {
-                        logger.info(`🛑 Killing process for task ${taskId}`)
-                        try {
-                            running.process.kill()
-                            runningTasks.delete(taskId)
-                            clearTaskMeta(taskId)
+                    // Convert taskId to string for consistent lookup
+                    const taskIdStr = taskId.toString()
 
+                    // Debug log current running tasks
+                    logger.debug(`🔍 Current running tasks: [${Array.from(runningTasks.keys()).join(", ")}]`)
+
+                    // Look up in runningTasks map first
+                    const running = runningTasks.get(taskIdStr)
+
+                    if (running && running.process) {
+                        logger.info(`🛑 Killing process for task ${taskIdStr} (found in runningTasks map)`)
+                        try {
+                            // Call the kill() method on the process object
+                            await running.process.kill()
+                            logger.info(`✅ Task ${taskIdStr} successfully killed`)
+
+                            // Remove task from the running tasks map
+                            runningTasks.delete(taskIdStr)
+                            clearTaskMeta(taskIdStr)
+
+                            // Send notification about task cancellation
                             sendTaskResult(running.task, {
                                 success: false,
                                 code: 143,
@@ -184,13 +208,13 @@ function connect() {
                                 duration: Date.now() - running.startTime
                             })
                         } catch (killErr) {
-                            logger.error(`❌ Error killing task ${taskId}:`, killErr)
+                            logger.error(`❌ Error killing task ${taskIdStr}:`, killErr)
                             // Still try to clean up even if kill failed
-                            runningTasks.delete(taskId)
-                            clearTaskMeta(taskId)
+                            runningTasks.delete(taskIdStr)
+                            clearTaskMeta(taskIdStr)
                         }
                     } else {
-                        logger.info(`⚠️ Task ${taskId} not found or already completed`)
+                        logger.warn(`⚠️ Task ${taskIdStr} not found in runningTasks map or has no process handler`)
                     }
                     break
                 }
@@ -271,17 +295,23 @@ function sendTaskResult(task, result) {
             type: "result",
             payload: {
                 taskId: task.taskId,
+                runId: task.runId,
                 name: task.name,
                 status: result.success ? "success" : "error",
                 exitCode: result.code,
                 stdout: result.stdout || "",
                 stderr: result.stderr || "",
-                durationMs: result.duration
+                durationMs: result.duration || 0
             }
         }
 
         socket.send(JSON.stringify(message))
         logger.debug(`📤 Sent result for task ${task.name}:`, result.success ? "success" : "error")
+
+        // Log duration for debugging
+        if (result.duration) {
+            logger.debug(`⏱️ Task ${task.name} duration: ${result.duration}ms (${Math.round(result.duration / 1000)}s)`)
+        }
     } catch (err) {
         logger.error(`❌ Failed to send task result:`, err)
     }

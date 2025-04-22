@@ -13,16 +13,44 @@ if (!webhook || webhookUrl === "") {
 }
 
 /**
+ * Format duration in a human-readable way
+ * @param {number} ms Time in milliseconds
+ * @returns {string} Formatted duration string
+ */
+function formatDuration(ms) {
+    if (!ms || ms < 0) return "0ms"
+
+    const days = Math.floor(ms / (24 * 60 * 60 * 1000))
+    const hours = Math.floor((ms % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000))
+    const minutes = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000))
+    const seconds = Math.floor((ms % (60 * 1000)) / 1000)
+    const milliseconds = ms % 1000
+
+    let result = ""
+    if (days > 0) result += `${days}d `
+    if (hours > 0) result += `${hours}h `
+    if (minutes > 0) result += `${minutes}m `
+    if (seconds > 0) result += `${seconds}s `
+    if (milliseconds > 0) result += `${milliseconds}ms`
+
+    return result.trim()
+}
+
+/**
  * Get color for task status
  * @param {string} status Task status
  * @returns {number} Discord color code
  */
 function getStatusColor(status) {
     switch (status.toLowerCase()) {
-        case 'success': return "#00ff00" // Green
-        case 'error': return "#ff0000"   // Red
-        case 'running': return "#ffff00"  // Yellow
-        default: return "#808080"        // Gray
+        case "success":
+            return "#00ff00" // Green
+        case "error":
+            return "#ff0000" // Red
+        case "running":
+            return "#ffff00" // Yellow
+        default:
+            return "#808080" // Gray
     }
 }
 
@@ -53,7 +81,7 @@ async function sendTaskResult(data) {
                 },
                 {
                     name: "Duration",
-                    value: `${data.durationMs}ms`,
+                    value: formatDuration(data.durationMs),
                     inline: true
                 }
             ])
