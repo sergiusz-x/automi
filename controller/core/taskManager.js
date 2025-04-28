@@ -187,6 +187,17 @@ class TaskManager {
 
             if (!agent?.wsConnection) {
                 logger.error(`❌ No WebSocket connection for agent ${task.agentId}`)
+                // Notify via webhook about offline agent error
+                await sendTaskResult({
+                    taskId: task.id,
+                    taskName: task.name,
+                    agentId: task.agentId,
+                    status: TASK_STATUSES.ERROR,
+                    stdout: "",
+                    stderr: `Agent ${task.agentId} offline or not connected`,
+                    exitCode: 1,
+                    durationMs: 0
+                })
                 throw new Error(`Agent ${task.agentId} offline or not connected`)
             }
 
@@ -194,6 +205,17 @@ class TaskManager {
                 logger.error(
                     `❌ WebSocket connection not open for agent ${task.agentId} (state: ${agent.wsConnection.readyState})`
                 )
+                // Notify via webhook about offline agent error
+                await sendTaskResult({
+                    taskId: task.id,
+                    taskName: task.name,
+                    agentId: task.agentId,
+                    status: TASK_STATUSES.ERROR,
+                    stdout: "",
+                    stderr: `Agent ${task.agentId} connection not open (state: ${agent.wsConnection.readyState})`,
+                    exitCode: 1,
+                    durationMs: 0
+                })
                 throw new Error(`Agent ${task.agentId} connection not open (state: ${agent.wsConnection.readyState})`)
             }
 

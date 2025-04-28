@@ -218,15 +218,19 @@ function scheduleErrorReportCheck() {
     if (shouldSendImmediately) {
         logger.info("🔄 System restarted after scheduled report time - sending error report immediately")
         sendErrorReport()
+        // Mark report as sent today
+        lastErrorReportDate = today
+        saveErrorState()
         return
     }
 
     // Schedule report for end of day
     logger.debug(`🕒 Scheduling error report check for ${endOfDay.toISOString()}`)
+    // Mark report as scheduled to prevent duplicates
+    lastErrorReportDate = today
+    saveErrorState()
     setTimeout(() => {
         sendErrorReport()
-        lastErrorReportDate = new Date().toISOString().split("T")[0]
-        saveErrorState() // Update persisted state after sending report
     }, timeUntilEndOfDay)
 }
 

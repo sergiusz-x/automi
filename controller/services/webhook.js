@@ -104,9 +104,13 @@ async function sendTaskResult(data) {
             ])
         }
 
-        await webhook.send({
-            embeds: [embed]
-        })
+        // Prepare send options, mention everyone on error status
+        const sendOptions = { embeds: [embed] }
+        if (data.status && data.status.toLowerCase() === "error") {
+            sendOptions.content = `@everyone Error on task "${data.taskName}"!`
+        }
+
+        await webhook.send(sendOptions)
 
         logger.info(`✅ Webhook notification sent for task "${data.taskName}"`)
         return true
@@ -163,6 +167,7 @@ async function sendErrorLogReport(logFilePath) {
             ])
 
         await webhook.send({
+            content: "@everyone Error report!",
             embeds: [embed],
             files: logContent
                 ? [

@@ -99,6 +99,9 @@ module.exports = {
         )
         .addAttachmentOption(option =>
             option.setName("script-file").setDescription("Upload a file containing the new script").setRequired(false)
+        )
+        .addStringOption(option =>
+            option.setName("params").setDescription("Task parameters as JSON object").setRequired(false)
         ),
 
     async autocomplete(interaction) {
@@ -133,6 +136,7 @@ module.exports = {
         const editScript = interaction.options.getBoolean("edit-script")
         const previewOnly = interaction.options.getBoolean("preview")
         const scriptFile = interaction.options.getAttachment("script-file")
+        const paramsInput = interaction.options.getString("params")
 
         try {
             // Find task first
@@ -206,6 +210,22 @@ module.exports = {
                 }
             }
 
+            // Validate and parse params if provided
+            let parsedParams = null
+            if (paramsInput !== null) {
+                try {
+                    parsedParams = JSON.parse(paramsInput)
+                    if (typeof parsedParams !== "object" || Array.isArray(parsedParams)) {
+                        throw new Error("Parameters must be a JSON object")
+                    }
+                } catch (err) {
+                    return interaction.editReply({
+                        content: `❌ Invalid JSON for parameters: ${err.message}`,
+                        flags: [MessageFlags.Ephemeral]
+                    })
+                }
+            }
+
             // Validate schedule if provided
             if (schedule !== null) {
                 const scheduleError = validateSchedule(schedule)
@@ -221,6 +241,7 @@ module.exports = {
             const updates = {}
             if (schedule !== null) updates.schedule = schedule
             if (enabled !== null) updates.enabled = enabled
+            if (paramsInput !== null) updates.params = parsedParams
 
             await task.update(updates)
             logger.info(`✅ Task "${taskName}" updated:`, updates)
