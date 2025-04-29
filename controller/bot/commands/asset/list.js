@@ -70,17 +70,13 @@ module.exports = {
                     .setColor("#3498db")
                     .setDescription("Assets that can be used by all tasks as environment variables")
 
-                let fieldContent = ""
-                pageAssets.forEach(asset => {
-                    fieldContent += `**${asset.key}**\n`
-                    fieldContent += `Value: \`${asset.value}\`\n`
-                    if (asset.description) {
-                        fieldContent += `Description: ${asset.description}\n`
-                    }
-                    fieldContent += "\n"
+                // Add each asset as its own field to avoid exceeding Discord's field length limits
+                const fields = pageAssets.map(asset => {
+                    let value = `Value: \`${asset.value}\``
+                    if (asset.description) value += `\nDescription: ${asset.description}`
+                    return { name: asset.key, value, inline: false }
                 })
-
-                embed.addFields({ name: "Available Assets", value: fieldContent || "No assets found" })
+                embed.addFields(fields)
 
                 if (assets.length > itemsPerPage) {
                     embed.setFooter({
@@ -131,7 +127,6 @@ module.exports = {
                         .catch(() => {}) // Ignore errors if message was deleted
                 })
             }
-
         } catch (err) {
             logger.error("❌ Error listing assets:", err)
             return interaction.editReply("An error occurred while listing assets. Please check the logs.")
