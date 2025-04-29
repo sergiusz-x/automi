@@ -226,9 +226,6 @@ function scheduleErrorReportCheck() {
 
     // Schedule report for end of day
     logger.debug(`🕒 Scheduling error report check for ${endOfDay.toISOString()}`)
-    // Mark report as scheduled to prevent duplicates
-    lastErrorReportDate = today
-    saveErrorState()
     setTimeout(() => {
         sendErrorReport()
     }, timeUntilEndOfDay)
