@@ -483,44 +483,42 @@ async function createUpcomingTasksFields(tasks, daysToShow = 7) {
             // Format the day heading with Discord timestamp
             const dayTimestamp = Math.floor(dayGroup.date.getTime() / 1000)
 
-            // Create task list text
+            // Build task list text with max length and remaining count indicator
+            const maxChars = 1000
+            const totalTasks = dayGroup.tasks.length
             let taskList = ""
-
-            if (dayGroup.tasks.length > 0) {
+            if (totalTasks === 0) {
+                taskList = "No scheduled tasks"
+            } else {
+                let shown = 0
                 for (const task of dayGroup.tasks) {
                     const typeEmoji = getTaskTypeEmoji(task.type)
                     const shouldStrikethrough = task.isPast && task.completed
-
-                    // Add the main task
-                    taskList += `${typeEmoji} ${shouldStrikethrough ? "~~" : ""}<t:${task.timestamp}:t> ${task.name} (${
+                    // Main task line
+                    let line = `${typeEmoji} ${shouldStrikethrough ? "~~" : ""}<t:${task.timestamp}:t> ${task.name} (${
                         task.agentId
                     })${shouldStrikethrough ? "~~" : ""}\n`
-
-                    // Add dependencies if any
+                    // Dependencies lines
                     if (task.dependencies && task.dependencies.length > 0) {
                         for (const dep of task.dependencies) {
                             if (dep.childTask && dep.childTask.enabled) {
                                 const condEmoji = getConditionEmoji(dep.condition)
                                 const depTypeEmoji = getTaskTypeEmoji(dep.childTask.type)
-
-                                // Simplified logic - if the main task is completed and crossed out,
-                                // dependent tasks should also be crossed out
-                                const depStrikethrough = shouldStrikethrough
-
-                                taskList += `> ${condEmoji} ${depTypeEmoji} ${depStrikethrough ? "~~" : ""}${
+                                const depStrike = shouldStrikethrough
+                                line += `> ${condEmoji} ${depTypeEmoji} ${depStrike ? "~~" : ""}${
                                     dep.childTask.name
-                                } (${dep.childTask.agentId})${depStrikethrough ? "~~" : ""}\n`
+                                } (${dep.childTask.agentId})${depStrike ? "~~" : ""}\n`
                             }
                         }
                     }
+                    // Check if adding this line exceeds limit
+                    if (taskList.length + line.length > maxChars) {
+                        taskList += `... and ${totalTasks - shown} more tasks`
+                        break
+                    }
+                    taskList += line
+                    shown++
                 }
-            } else {
-                taskList = "No scheduled tasks"
-            }
-
-            // Truncate if needed
-            if (taskList.length > 1020) {
-                taskList = taskList.substring(0, 1000) + "\n... (more tasks not shown)"
             }
 
             // Add field to results
@@ -589,47 +587,32 @@ async function createStatusEmbed(stats) {
     const now = Math.floor(Date.now() / 1000)
     const last24h = Math.floor((Date.now() - 24 * 60 * 60 * 1000) / 1000)
 
-    // Create base embed
     const embed = new EmbedBuilder()
         .setTitle("📡 Automi System Status")
         .setDescription(`Statistics for period: <t:${last24h}:f> to <t:${now}:f>`)
         .setColor("#00bcd4")
-        .addFields([
+        // Spread base status fields to pass them as individual arguments
+        .addFields(
             {
                 name: "Tasks",
-                value: `📋 Total: ${stats.totalTasks}
-⚡ Active: ${stats.enabledTasks}
-🔄 Running: ${stats.runningTasks}`,
+                value: `📋 Total: ${stats.totalTasks}\n⚡ Active: ${stats.enabledTasks}\n🔄 Running: ${stats.runningTasks}`,
                 inline: true
             },
             {
                 name: "Agents",
-                value: `📡 Total: ${stats.totalAgents}
-🟢 Online: ${stats.onlineAgents}
-💤 Offline: ${stats.totalAgents - stats.onlineAgents}`,
+                value: `📡 Total: ${stats.totalAgents}\n🟢 Online: ${stats.onlineAgents}\n💤 Offline: ${
+                    stats.totalAgents - stats.onlineAgents
+                }`,
                 inline: true
             },
             {
                 name: "Performance (24h)",
-                value: `🔄 Total Runs: ${stats.last24hRuns}
-✅ Successful: ${stats.successfulRuns}
-❌ Failed: ${stats.failedRuns}
-📊 Success Rate: ${stats.successRate}%`,
+                value: `🔄 Total Runs: ${stats.last24hRuns}\n✅ Successful: ${stats.successfulRuns}\n❌ Failed: ${stats.failedRuns}\n📊 Success Rate: ${stats.successRate}%`,
                 inline: true
             },
-            {
-                name: "Recent Task Runs",
-                value: recentRunsText || "No recent task runs",
-                inline: false
-            },
-            {
-                name: "📆 Scheduled Tasks Calendar",
-                value: " ",
-                inline: false
-            }
-        ])
-        .setFooter({ text: "Last updated" })
-        .setTimestamp()
+            { name: "Recent Task Runs", value: recentRunsText || "No recent task runs", inline: false },
+            { name: "📆 Scheduled Tasks Calendar", value: " ", inline: false }
+        )
 
     // Fetch scheduled tasks
     const scheduledTasks = await db.Task.findAll({
@@ -641,9 +624,9 @@ async function createStatusEmbed(stats) {
         }
     })
 
-    // Add upcoming tasks fields
+    // Add upcoming tasks fields flattened (show next 3 days only to limit embed size)
     const upcomingTasksFields = await createUpcomingTasksFields(scheduledTasks, 7)
-    embed.addFields(upcomingTasksFields)
+    embed.addFields(...upcomingTasksFields)
 
     return embed
 }

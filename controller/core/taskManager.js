@@ -624,6 +624,17 @@ class TaskManager {
 
         if (!agentState.isAgentOnline(agentId)) {
             logger.error(`❌ Agent ${agentId} not connected`)
+            // Notify via webhook about offline agent error
+            await sendTaskResult({
+                taskId: task.id,
+                taskName: task.name,
+                agentId,
+                status: TASK_STATUSES.ERROR,
+                stdout: "",
+                stderr: `Agent ${agentId} not connected`,
+                exitCode: 1,
+                durationMs: 0
+            })
             throw new Error(`Agent ${agentId} not connected`)
         }
 
