@@ -17,6 +17,11 @@ let socket
 let reconnectAttempt = 0
 const MAX_RECONNECT_DELAY = 30000 // Maximum reconnect delay of 30 seconds
 
+// Add heartbeat interval tracking and default ping interval
+let heartbeatInterval, pongTimeout
+const PING_INTERVAL = config.pingInterval || 30000
+const PONG_TIMEOUT = config.pongTimeout || 10000 // time to wait for pong
+
 // Track running tasks and metadata
 const runningTasks = new Map()
 const taskMeta = new Map()
@@ -71,6 +76,35 @@ function connect() {
                 authToken: config.token
             })
         )
+
+        // Start heartbeat ping to detect silent disconnects
+        logger.debug(`💓 Starting heartbeat ping every ${PING_INTERVAL}ms`)
+        heartbeatInterval = setInterval(() => {
+            if (socket.readyState === WebSocket.OPEN) {
+                logger.debug("💓 Sending ping to controller")
+                socket.ping()
+                // Schedule pong timeout
+                if (pongTimeout) clearTimeout(pongTimeout)
+                pongTimeout = setTimeout(() => {
+                    logger.warn(
+                        `❌ No pong received within ${PONG_TIMEOUT}ms, terminating connection to trigger reconnect`
+                    )
+                    socket.terminate()
+                }, PONG_TIMEOUT)
+            }
+        }, PING_INTERVAL)
+    })
+
+    // Log incoming pongs and clear pong timeout
+    socket.on("pong", () => {
+        logger.debug("💓 Received pong from controller")
+        if (pongTimeout) {
+            clearTimeout(pongTimeout)
+            pongTimeout = null
+        }
+    })
+    socket.on("ping", () => {
+        logger.debug("💓 Received ping from controller")
     })
 
     // Handle incoming messages
@@ -244,9 +278,11 @@ function connect() {
         }
     })
 
-    // Handle connection close
-    socket.on("close", code => {
-        logger.warn(`❌ Connection closed with code ${code}`)
+    // Handle connection close with reason and clear heartbeat
+    socket.on("close", (code, reason) => {
+        logger.warn(`❌ Connection closed with code ${code}, reason: ${reason.toString()}`)
+        if (heartbeatInterval) clearInterval(heartbeatInterval)
+        if (pongTimeout) clearTimeout(pongTimeout)
 
         // Kill any running tasks
         for (const [taskId, { process, task, startTime }] of runningTasks.entries()) {
@@ -273,9 +309,9 @@ function connect() {
         setTimeout(connect, delay)
     })
 
-    // Handle connection errors
+    // Handle connection errors with stack trace
     socket.on("error", err => {
-        logger.error(`❌ WebSocket error:`, err)
+        logger.error(`❌ WebSocket error: ${err.stack || err}`)
     })
 }
 
