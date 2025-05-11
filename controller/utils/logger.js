@@ -186,11 +186,19 @@ const logger = {
     }
 }
 
+// Track scheduled report timeout to prevent multiple schedules
+let errorReportTimeoutId = null
+
 /**
  * Check if it's time to send an error report
  * Scheduled to run once at the end of the day
  */
 function scheduleErrorReportCheck() {
+    // Prevent scheduling more than once
+    if (errorReportTimeoutId) {
+        return
+    }
+
     const now = new Date()
     const today = now.toISOString().split("T")[0]
 
@@ -226,8 +234,10 @@ function scheduleErrorReportCheck() {
 
     // Schedule report for end of day
     logger.debug(`🕒 Scheduling error report check for ${endOfDay.toISOString()}`)
-    setTimeout(() => {
+    errorReportTimeoutId = setTimeout(() => {
         sendErrorReport()
+        // Clear timeout ID so future scheduling calls can run next day
+        errorReportTimeoutId = null
     }, timeUntilEndOfDay)
 }
 
