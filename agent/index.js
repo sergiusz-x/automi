@@ -105,6 +105,7 @@ function connect() {
     })
     socket.on("ping", () => {
         logger.debug("💓 Received ping from controller")
+        socket.pong()
     })
 
     // Handle incoming messages
@@ -309,11 +310,25 @@ function connect() {
         setTimeout(connect, delay)
     })
 
-    // Handle connection errors with stack trace
+    // Handle connection errors with stack trace and force reconnection
     socket.on("error", err => {
         logger.error(`❌ WebSocket error: ${err.stack || err}`)
+        // Terminate socket on error to trigger reconnect
+        if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+            socket.terminate()
+        }
     })
 }
+
+// Catch unhandled promise rejections and uncaught exceptions to prevent crash and trigger reconnect
+process.on('unhandledRejection', (reason, promise) => {
+    logger.error('❌ Unhandled promise rejection:', reason)
+    if (socket && socket.readyState === WebSocket.OPEN) socket.terminate()
+})
+process.on('uncaughtException', err => {
+    logger.error('❌ Uncaught exception:', err)
+    if (socket && socket.readyState === WebSocket.OPEN) socket.terminate()
+})
 
 /**
  * Send task execution results back to controller
